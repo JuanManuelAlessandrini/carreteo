@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#17131f">
+<title>Carreteo · Juego de fiesta 100% gratis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#17131f; --surface:#221c30; --surface2:#2c2440;
+  --ink:#f5f0ff; --muted:#a99cc4; --line:#3a3152;
+  --pink:#ff3d7f; --mango:#ffb24d; --violet:#8b6cff;
+  --accent:var(--violet);
+  --radius:22px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;
+  overflow:hidden; position:fixed; inset:0; width:100%;
+  background-image:radial-gradient(circle at 15% 10%, rgba(139,108,255,.14), transparent 45%),
+                   radial-gradient(circle at 85% 90%, rgba(255,61,127,.12), transparent 45%);
+}
+h1,h2,.display{font-family:'Anton',Impact,sans-serif;letter-spacing:.02em;text-transform:uppercase;font-weight:400}
+button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:none}
+#app{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;position:relative}
+.screen{display:none;flex-direction:column;height:100%;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+.screen.on{display:flex}
+.fill{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* ---------- shared ---------- */
+.topbar{display:flex;align-items:center;gap:10px;padding-bottom:14px}
+.topbar .back{width:42px;height:42px;border-radius:14px;background:var(--surface);font-size:18px;flex:none;border:1px solid var(--line)}
+.topbar h2{font-size:22px;flex:1;line-height:1}
+.pill{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--muted)}
+.btn{display:block;width:100%;padding:17px;border-radius:var(--radius);font-weight:700;font-size:17px;text-align:center;transition:transform .08s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--pink),#ff6ea9);color:#fff;box-shadow:0 8px 24px rgba(255,61,127,.35)}
+.btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+.tag{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- age gate ---------- */
+#gate{position:fixed;inset:0;background:rgba(13,10,20,.92);backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px}
+#gate .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:28px 22px;max-width:380px;text-align:center}
+#gate h2{font-size:30px;margin-bottom:10px}
+#gate p{color:var(--muted);font-size:14px;line-height:1.55;margin-bottom:18px}
+
+/* ---------- home ---------- */
+#home{justify-content:center;text-align:center;gap:8px}
+.logo{font-size:clamp(56px,17vw,84px);line-height:.95;background:linear-gradient(120deg,var(--pink) 20%,var(--mango) 55%,var(--violet) 90%);-webkit-background-clip:text;background-clip:text;color:transparent;transform:rotate(-2deg)}
+.logo-sub{color:var(--muted);font-size:15px;margin:6px 0 30px}
+.freechip{display:inline-block;background:rgba(255,178,77,.15);color:var(--mango);border:1px solid rgba(255,178,77,.4);border-radius:999px;padding:7px 16px;font-size:12px;font-weight:700;letter-spacing:.12em;margin-bottom:26px}
+.homebtns{display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px;margin:0 auto}
+.switchrow{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:22px;color:var(--muted);font-size:14px}
+.switch{width:52px;height:30px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;position:relative;transition:background .2s;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:.2s}
+.switch.on{background:var(--mango)}
+.switch.on::after{left:26px;background:#17131f}
+.footnote{color:var(--muted);font-size:11.5px;margin-top:26px;line-height:1.5;opacity:.8}
+
+/* ---------- players ---------- */
+.addrow{display:flex;gap:10px;margin-bottom:14px}
+.addrow input{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:15px 16px;color:var(--ink);font-size:16px;font-family:inherit;outline:none}
+.addrow input:focus{border-color:var(--violet)}
+.addrow button{width:54px;border-radius:16px;background:var(--violet);font-size:26px;color:#fff;flex:none}
+.plist{display:flex;flex-direction:column;gap:9px;padding-bottom:12px}
+.prow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+.pav{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:700;color:#17131f;font-size:16px;flex:none}
+.prow .nm{flex:1;font-weight:500;font-size:16px}
+.prow .del{color:var(--muted);font-size:20px;padding:6px}
+.emptyhint{color:var(--muted);text-align:center;padding:34px 20px;font-size:14px;line-height:1.6}
+
+/* ---------- modes grid ---------- */
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding-bottom:16px}
+.mtile{border-radius:20px;padding:16px 14px;text-align:left;min-height:112px;display:flex;flex-direction:column;justify-content:space-between;background:var(--surface);border:1px solid var(--line);position:relative;overflow:hidden;transition:transform .08s}
+.mtile:active{transform:scale(.96)}
+.mtile::before{content:"";position:absolute;inset:0;background:linear-gradient(150deg,var(--mc) 0%,transparent 62%);opacity:.22}
+.mtile .em{font-size:26px}
+.mtile .nm{font-family:'Anton';font-size:17px;letter-spacing:.03em;text-transform:uppercase;line-height:1.05;margin-top:8px;position:relative}
+.mtile .ds{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;position:relative}
+.mtile .free{position:absolute;top:10px;right:10px;font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--mango)}
+.sect{margin:16px 0 10px}
+
+/* ---------- game ---------- */
+#game{padding-bottom:14px}
+.gtop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.gtop .mname{flex:1;font-family:'Anton';font-size:17px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+.gtop .cnt{font-size:12px;color:var(--muted)}
+.rulesbar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.rulesbar::-webkit-scrollbar{display:none}
+.rulechip{flex:none;background:rgba(255,178,77,.12);border:1px solid rgba(255,178,77,.45);color:var(--mango);border-radius:999px;padding:7px 12px;font-size:12px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cardwrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;perspective:900px}
+.gcard{
+  width:100%;max-height:100%;overflow-y:auto;
+  background:linear-gradient(165deg,var(--surface2),var(--surface));
+  border:1px solid var(--line);border-radius:28px;
+  padding:22px 22px 26px;position:relative;
+  transform:rotate(-1.6deg);
+  box-shadow:0 20px 50px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.03) inset;
+  animation:dealIn .34s cubic-bezier(.2,.9,.3,1.2);
+}
+.gcard.out{animation:dealOut .22s ease-in forwards}
+@keyframes dealIn{from{opacity:0;transform:translateY(46px) rotate(6deg) scale(.92)}to{opacity:1;transform:translateY(0) rotate(-1.6deg) scale(1)}}
+@keyframes dealOut{to{opacity:0;transform:translateX(-90px) rotate(-14deg) scale(.9)}}
+@media (prefers-reduced-motion:reduce){.gcard,.gcard.out{animation:none}}
+.ctype{display:inline-block;background:var(--accent);color:#17131f;font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;border-radius:8px;padding:6px 11px;margin-bottom:16px}
+.ctext{font-family:'Anton';font-size:clamp(23px,6.4vw,31px);line-height:1.22;letter-spacing:.01em}
+.ctext .pj{color:var(--accent)}
+.csub{margin-top:14px;color:var(--muted);font-size:13px;line-height:1.5}
+.cwidget{margin-top:18px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.wbtn{background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:14px;padding:12px 18px;font-weight:700;font-size:15px}
+.timerbig,.dicebig{font-family:'Anton';font-size:54px;color:var(--accent);line-height:1}
+.answer{background:rgba(255,255,255,.05);border:1px dashed var(--line);border-radius:14px;padding:12px 14px;font-size:15px;color:var(--ink)}
+.quickadd{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.qbtn{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:13px;color:var(--muted)}
+.qbtn b{color:var(--ink)}
+.gactions{display:flex;gap:10px;margin-top:10px}
+.gactions .btn{flex:1;padding:15px}
+.skipbtn{color:var(--muted)}
+.donebtn{background:var(--accent);color:#17131f;font-weight:800}
+.hintswipe{text-align:center;color:var(--muted);font-size:11px;margin-top:8px;opacity:.7}
+
+/* ---------- marcador ---------- */
+#board .prow{justify-content:space-between}
+.sipnum{font-family:'Anton';font-size:22px;color:var(--mango);min-width:34px;text-align:center}
+.sipbtns{display:flex;gap:6px}
+.sipbtns button{width:36px;height:36px;border-radius:11px;background:var(--surface2);border:1px solid var(--line);font-size:17px}
+.crown{font-size:16px}
+
+/* ---------- ruleta ---------- */
+#wheelbox{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0}
+#wheel{border-radius:50%;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.pointer{width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-top:20px solid var(--mango);margin-bottom:-8px;z-index:2;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+#wheelres{text-align:center;min-height:64px}
+#wheelres .who{font-family:'Anton';font-size:28px;color:var(--pink)}
+#wheelres .what{color:var(--muted);font-size:15px;margin-top:4px}
+
+/* ---------- impostor ---------- */
+.impcard{background:var(--surface2);border:1px solid var(--line);border-radius:24px;padding:26px 20px;text-align:center;margin:10px 0}
+.impcard h3{font-family:'Anton';font-size:24px;margin-bottom:8px}
+.impword{font-family:'Anton';font-size:40px;color:var(--mango);margin:14px 0}
+.impimp{font-family:'Anton';font-size:32px;color:var(--pink);margin:14px 0}
+.holdbtn{width:100%;padding:20px;border-radius:18px;background:var(--violet);color:#fff;font-weight:800;font-size:16px;user-select:none;-webkit-user-select:none}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:11px 20px;font-size:13.5px;color:var(--ink);z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;max-width:88%;text-align:center}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="card">
+    <div style="font-size:44px;margin-bottom:6px">🍹</div>
+    <h2>Solo para +18</h2>
+    <p>Carreteo es un juego social para adultos. Si van a beber alcohol: con moderación, hidrátense, coman algo y <b>nunca manejen</b> después de tomar. Cualquier reto se puede saltar: nadie está obligado a nada.<br><br>También puedes jugar en <b>modo sin alcohol</b> (los sorbos se convierten en puntos y penitencias).</p>
+    <button class="btn btn-primary" onclick="closeGate()">Soy mayor de 18 · Entrar</button>
+    <button class="btn" style="color:var(--muted);font-size:13px;margin-top:6px" onclick="setNoAlcohol(true);closeGate()">Entrar en modo sin alcohol</button>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- HOME -->
+  <section class="screen on" id="home">
+    <div>
+      <h1 class="logo">Carreteo</h1>
+      <div class="logo-sub">El juego de fiesta que enciende cualquier previa</div>
+      <div class="freechip">TODOS LOS MODOS · 0 ANUNCIOS · $0 PARA SIEMPRE</div>
+      <div class="homebtns">
+        <button class="btn btn-primary" onclick="go('players')">Jugar 🎉</button>
+        <button class="btn btn-ghost" onclick="go('board')">Marcador de sorbos</button>
+      </div>
+      <div class="switchrow">
+        <span>🍺 Con alcohol</span>
+        <div class="switch" id="alcoSwitch" onclick="setNoAlcohol(!S.noAlcohol)"></div>
+        <span>🧃 Sin alcohol</span>
+      </div>
+      <div class="footnote" id="foot">+380 cartas 100% originales · 22 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
+    </div>
+  </section>
+
+  <!-- PLAYERS -->
+  <section class="screen" id="players">
+    <div class="topbar">
+      <button class="back" onclick="go('home')">←</button>
+      <h2>¿Quiénes juegan?</h2>
+      <span class="pill" id="pcount">0</span>
+    </div>
+    <div class="addrow">
+      <input id="pname" type="text" placeholder="Nombre del jugador" maxlength="16" enterkeyhint="done">
+      <button onclick="addPlayer()">+</button>
+    </div>
+    <div class="fill">
+      <div class="plist" id="plist"></div>
+      <div class="emptyhint" id="phint">Agrega al menos 2 personas.<br>Tip: mientras más caóticos los amigos, mejor el juego 😈</div>
+    </div>
+    <button class="btn btn-primary" id="toModes" onclick="go('modes')" disabled style="opacity:.4">Elegir modo →</button>
+  </section>
+
+  <!-- MODES -->
+  <section class="screen" id="modes">
+    <div class="topbar">
+      <button class="back" onclick="go('players')">←</button>
+      <h2>Elige el modo</h2>
+      <span class="pill" id="freeAll">Todo gratis ✓</span>
+    </div>
+    <div class="fill">
+      <div class="tag sect">Modos de cartas</div>
+      <div class="mgrid" id="mgridCards"></div>
+      <div class="tag sect">Juegos especiales</div>
+      <div class="mgrid" id="mgridSpecial"></div>
+      <div class="tag sect">De temporada</div>
+      <div class="mgrid" id="mgridSeason"></div>
+    </div>
+  </section>
+
+  <!-- GAME (cards) -->
+  <section class="screen" id="game">
+    <div class="gtop">
+      <button class="back" onclick="endGame()">←</button>
+      <div class="mname" id="gmode"></div>
+      <button class="pill" onclick="go('board')">🏆</button>
+      <span class="cnt" id="gcount"></span>
+    </div>
+    <div class="rulesbar" id="rulesbar"></div>
+    <div class="cardwrap"><div class="gcard" id="gcard"></div></div>
+    <div class="quickadd" id="quickadd"></div>
+    <div class="gactions">
+      <button class="btn btn-ghost skipbtn" onclick="nextCard(true)">Saltar</button>
+      <button class="btn donebtn" onclick="nextCard(false)">¡Hecho! →</button>
+    </div>
+    <div class="hintswipe">desliza la carta para avanzar · toca 🏆 para anotar sorbos</div>
+  </section>
+
+  <!-- BOARD -->
+  <section class="screen" id="board">
+    <div class="topbar">
+      <button class="back" onclick="go(S.prev||'home')">←</button>
+      <h2>Marcador</h2>
+      <button class="pill" onclick="resetSips()">Reiniciar</button>
+    </div>
+    <div class="fill"><div class="plist" id="blist"></div>
+      <div class="emptyhint" id="bhint">Aún no hay jugadores. Súmalos desde “Jugar”.</div>
+    </div>
+    <div class="footnote" style="text-align:center" id="bfoot"></div>
+  </section>
+
+  <!-- RULETA -->
+  <section class="screen" id="ruleta">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')">←</button>
+      <h2>Ruleta</h2>
+    </div>
+    <div class="fill" id="wheelbox">
+      <div class="pointer"></div>
+      <canvas id="wheel" width="300" height="300"></canvas>
+      <div id="wheelres"></div>
+    </div>
+    <button class="btn btn-primary" id="spinbtn" onclick="spin()">Girar 🎡</button>
+  </section>
+
+  <!-- IMPOSTOR -->
+  <section class="screen" id="impostor">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')">←</button>
+      <h2>El impostor</h2>
+    </div>
+    <div class="fill" id="impbox"></div>
+  </section>
+
+  <!-- CUARTO REY -->
+  <section class="screen" id="rey">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')">←</button>
+      <h2>Cuarto rey</h2>
+      <span class="pill" id="reyleft"></span>
+    </div>
+    <div class="fill" style="display:flex;align-items:center;justify-content:center">
+      <div class="gcard" id="reycard" style="--accent:#eab308;width:100%">
+        <span class="ctype" style="background:#eab308">Baraja del rey</span>
+        <div class="ctext">Saca una carta y obedece. Los reyes llenan el Vaso del Rey… el 4º se lo toma 👑</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="drawKing()">Sacar carta 🃏</button>
+  </section>
+
+</div>
+<div class="toast" id="toast"></div>
+
+
+<script src="cards.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
