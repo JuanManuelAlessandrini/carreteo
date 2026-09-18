@@ -12,10 +12,90 @@ const shuffle=a=>E.shuffle(a);
 const parseCard=s=>E.parseCard(s);
 const adapt=t=>E.adapt(t,S.noAlcohol);
 
-const S={players:[],noAlcohol:false,mode:null,deck:[],idx:0,rules:[],prev:'home',
-  lastP:null,drawn:0,kings:[],kingCount:0,timer:null};
+const S={
+  /* se guarda entre sesiones */
+  players:[], noAlcohol:false, intensity:3, sound:true, mix:[], startedAt:0,
+  /* solo de esta sesión */
+  mode:null, deck:[], allCards:[], idx:0, rules:[], prev:'home', drawn:0,
+  kings:[], kingCount:0, timer:null,
+  recent:{},   // cartas ya vistas por modo, para no repetir
+  bag:{}       // bolsa de turnos por modo, para repartir parejo
+};
 
 const AVCOLORS=['#ff3d7f','#ffb24d','#8b6cff','#59c2ff','#34d399','#f472b6','#facc15','#7dd3fc'];
+const LVL_NM={1:'Suave',2:'Medio',3:'Picante'};
+
+/* ---------- memoria ----------
+   Jugadores, marcador y preferencias sobreviven al cierre.
+   El historial de cartas no: cada fiesta parte con el mazo limpio.
+-------------------------------*/
+const SKEY='carreteo.v2';
+function save(){
+  try{
+    localStorage.setItem(SKEY,JSON.stringify({
+      players:S.players, noAlcohol:S.noAlcohol, intensity:S.intensity,
+      sound:S.sound, mix:S.mix, startedAt:S.startedAt
+    }));
+  }catch(e){/* modo incógnito o storage lleno: se juega igual */}
+}
+function load(){
+  try{
+    const raw=localStorage.getItem(SKEY);
+    if(!raw) return;
+    const d=JSON.parse(raw)||{};
+    if(Array.isArray(d.players)){
+      S.players=d.players.filter(p=>p&&p.n).map((p,i)=>({
+        n:String(p.n).slice(0,16), sips:+p.sips||0, done:+p.done||0, skip:+p.skip||0,
+        c:p.c||AVCOLORS[i%AVCOLORS.length]
+      }));
+    }
+    S.noAlcohol=!!d.noAlcohol;
+    S.intensity=[1,2,3].indexOf(d.intensity)>=0?d.intensity:3;
+    S.sound=d.sound!==false;
+    S.mix=Array.isArray(d.mix)?d.mix:[];
+    S.startedAt=+d.startedAt||0;
+  }catch(e){/* datos corruptos: se empieza de cero */}
+}
+
+/* ---------- sonido y vibración ----------
+   Sintetizado con WebAudio: ni un archivo de audio que cargar.
+   El contexto se crea al primer toque (política de autoplay).
+------------------------------------------*/
+const sfx=(function(){
+  let ctx=null;
+  function ac(){
+    if(!S.sound) return null;
+    try{
+      if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)();
+      if(ctx.state==='suspended') ctx.resume();
+      return ctx;
+    }catch(e){ return null }
+  }
+  function tone(freq,dur,type,vol,slideTo){
+    const c=ac(); if(!c) return;
+    try{
+      const o=c.createOscillator(), g=c.createGain();
+      o.type=type||'sine';
+      o.frequency.setValueAtTime(freq,c.currentTime);
+      if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,c.currentTime+dur);
+      g.gain.setValueAtTime(vol==null?.2:vol,c.currentTime);
+      g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime+dur);
+    }catch(e){}
+  }
+  return {
+    card(){ tone(300,.11,'triangle',.10,520) },
+    tap(){ tone(660,.05,'sine',.08) },
+    tick(hi){ tone(hi?1100:820,.035,'square',.07) },
+    timeUp(){ tone(740,.55,'sine',.25) },
+    boom(){ tone(110,.8,'sawtooth',.3,28); tone(240,.35,'square',.18,60) },
+    spin(){ tone(380,.6,'sine',.13,880) },
+    win(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.22,'triangle',.16),i*100)) },
+    bad(){ tone(210,.32,'square',.18,90) }
+  };
+})();
+function vib(p){ try{ if(S.sound&&navigator.vibrate) navigator.vibrate(p) }catch(e){} }
 /* ---------- navegación ---------- */
 function go(id){
   const cur=document.querySelector('.screen.on');
@@ -32,17 +112,54 @@ function go(id){
 function closeGate(){$('gate').style.display='none'}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._x);t._x=setTimeout(()=>t.classList.remove('show'),2200)}
 
-function setNoAlcohol(v){S.noAlcohol=v;$('alcoSwitch').classList.toggle('on',v);toast(v?'Modo sin alcohol: sorbos → puntos, shots → prendas 🧃':'Modo con alcohol activado 🍺 Con moderación.')}
+/* ---------- preferencias ---------- */
+function setNoAlcohol(v){
+  S.noAlcohol=v;
+  $('alcoSwitch').classList.toggle('on',v);
+  save();
+  toast(v?'Modo sin alcohol: sorbos → puntos, shots → prendas 🧃':'Modo con alcohol activado 🍺 Con moderación.');
+}
+function setIntensity(l){
+  S.intensity=l; renderChips(); save(); sfx.tap();
+  toast(`Intensidad: ${LVL_NM[l]} ${l===1?'😇':l===2?'😏':'🌶️'}`);
+}
+function setSound(v){
+  S.sound=v; $('sndSwitch').classList.toggle('on',v); save();
+  if(v){ sfx.tap(); vib(15) }
+}
+function toggleAlcohol(){ setNoAlcohol(!S.noAlcohol) }
+function toggleSound(){ setSound(!S.sound) }
+function renderChips(){
+  document.querySelectorAll('#lvlChips .chip').forEach(b=>{
+    b.classList.toggle('on',+b.dataset.l===S.intensity);
+  });
+}
 
 /* ---------- jugadores ---------- */
 function addPlayer(){
   const i=$('pname'),n=i.value.trim();
   if(!n) return;
   if(S.players.some(p=>p.n.toLowerCase()===n.toLowerCase())){toast('Ese nombre ya está');return}
-  S.players.push({n,sips:0,c:AVCOLORS[S.players.length%AVCOLORS.length]});
-  i.value='';i.focus();renderPlayers();
+  S.players.push({n,sips:0,done:0,skip:0,c:AVCOLORS[S.players.length%AVCOLORS.length]});
+  if(!S.startedAt) S.startedAt=Date.now();
+  S.bag={};                       // cambió el grupo: se rearma el reparto de turnos
+  i.value='';i.focus();
+  renderPlayers(); save(); sfx.tap();
 }
-function delPlayer(i){S.players.splice(i,1);renderPlayers()}
+function delPlayer(i){S.players.splice(i,1);S.bag={};renderPlayers();save()}
+function newGame(){
+  S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0});
+  S.recent={}; S.bag={}; S.startedAt=Date.now();
+  renderPlayers(); save();
+  toast('Partida nueva: marcador en cero, mismos jugadores 🔄');
+}
+function clearAll(){
+  if(!confirm('¿Borrar los jugadores y el marcador guardados?')) return;
+  S.players=[]; S.recent={}; S.bag={}; S.startedAt=0;
+  try{ localStorage.removeItem(SKEY) }catch(e){}
+  renderPlayers();
+  toast('Todo borrado');
+}
 function renderPlayers(){
   const L=$('plist');L.innerHTML='';
   S.players.forEach((p,i)=>{
@@ -52,6 +169,7 @@ function renderPlayers(){
   });
   $('phint').style.display=S.players.length?'none':'block';
   $('pcount').textContent=S.players.length;
+  $('presetRow').style.display=S.players.length?'flex':'none';
   const ok=S.players.length>=2;
   $('toModes').disabled=!ok;$('toModes').style.opacity=ok?1:.4;
 }
@@ -76,31 +194,59 @@ function renderModes(){
 }
 
 /* ---------- motor de cartas ---------- */
+
+/* Qué cartas entran según la intensidad elegida.
+   Si el modo queda demasiado corto se avisa, pero nunca se deja vacío. */
+function deckFor(m){
+  const filtrado=E.filterByIntensity(m.deck,m.lvl,S.intensity);
+  if(filtrado.length>=8) return filtrado;
+  if(filtrado.length>0){
+    toast(`${m.nm} tiene pocas cartas en nivel ${LVL_NM[S.intensity]} 🌶️`);
+    return filtrado;
+  }
+  toast(`${m.nm} es más fuerte que tu nivel: va completo`);
+  return m.deck;
+}
+
 function startMode(m){
   if(m.min&&S.players.length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
-  S.mode=m;S.deck=shuffle(m.deck);S.idx=0;S.rules=[];S.drawn=0;
+  S.mode=m;
+  S.allCards=deckFor(m);
+  S.deck=E.buildDeck(S.allCards,S.recent[m.id]||[]);
+  S.idx=0;S.rules=[];S.drawn=0;
+  if(!S.startedAt) S.startedAt=Date.now();
   document.documentElement.style.setProperty('--accent',m.c);
   go('game');
   $('gmode').textContent=`${m.em} ${m.nm}`;
   showCard(S.deck[0]);
 }
+
+/* Bolsa de turnos: nadie vuelve a ser {j} hasta que pasaron todos. */
 function pickPlayers(){
-  let p1=rnd(S.players);
-  if(S.players.length>1){let g=0;while(p1===S.lastP&&g++<6)p1=rnd(S.players)}
-  let p2=p1;
-  if(S.players.length>1){while(p2===p1)p2=rnd(S.players)}
-  S.lastP=p1;return[p1,p2];
+  const key=S.mode?S.mode.id:'_';
+  const r=E.nextPlayers(S.bag[key]||{},S.players.length);
+  S.bag[key]=r.state;
+  const p1=S.players[r.i1]||S.players[0];
+  const p2=S.players[r.i2]||p1;
+  return [p1,p2];
 }
 let curCard=null,curP1=null,curP2=null;
 function showCard(raw){
   clearTimer();
+  if(S.mode) S.recent[S.mode.id]=E.pushRecent(S.recent[S.mode.id],raw,E.RECENT_CAP);
+  sfx.card(); vib(12);
   const c=parseCard(raw);curCard=c;
-  const [p1,p2]=pickPlayers();curP1=p1;curP2=p2;
+  // La bolsa solo avanza si la carta nombra a alguien. Si avanzara también
+  // en las cartas grupales ("el último en tocar algo rojo"), se gastarían
+  // turnos invisibles y el reparto visible volvería a ser puro azar.
+  const nombra=/\{j2?\}/.test(c.x);
+  const [p1,p2]=nombra?pickPlayers():[null,null];
+  curP1=p1;curP2=p2;
   let ans=null,txt=c.x;
   if(c.k==='p'&&txt.includes('§')){[txt,ans]=txt.split('§')}
   const html=esc(adapt(txt))
-    .replace(/\{j2\}/g,`<span class="pj">${esc(p2.n)}</span>`)
-    .replace(/\{j\}/g,`<span class="pj">${esc(p1.n)}</span>`);
+    .replace(/\{j2\}/g,p2?`<span class="pj">${esc(p2.n)}</span>`:'alguien')
+    .replace(/\{j\}/g,p1?`<span class="pj">${esc(p1.n)}</span>`:'alguien');
   const card=$('gcard');
   card.classList.remove('out');
   card.style.animation='none';void card.offsetWidth;card.style.animation='';
@@ -133,15 +279,17 @@ function renderQuick(txt,c,p1,p2){
   const n=m?parseInt(m[1]):1;
   const mk=(p)=>{const b=document.createElement('button');b.className='qbtn';
     b.innerHTML=`+${n} <b>${esc(p.n)}</b>`;
-    b.onclick=()=>{p.sips+=n;toast(`${p.n}: ${p.sips} ${S.noAlcohol?'puntos':'sorbos'} 🏆`)};q.appendChild(b)};
+    b.onclick=()=>{p.sips+=n;save();sfx.tap();toast(`${p.n}: ${p.sips} ${S.noAlcohol?'puntos':'sorbos'} 🏆`)};q.appendChild(b)};
   if(txt.includes('{j}'))mk(p1);
   if(txt.includes('{j2}'))mk(p2);
   const all=document.createElement('button');all.className='qbtn';all.innerHTML=`+1 <b>todos</b>`;
-  all.onclick=()=>{S.players.forEach(p=>p.sips++);toast('Todos +1 🍻')};q.appendChild(all);
+  all.onclick=()=>{S.players.forEach(p=>p.sips++);save();sfx.tap();toast('Todos +1 🍻')};q.appendChild(all);
 }
 function nextCard(skipped){
   const card=$('gcard');
   card.classList.add('out');
+  // quién se la jugó y quién se arrugó, para el resumen de la noche
+  if(curP1){ if(skipped) curP1.skip=(curP1.skip||0)+1; else curP1.done=(curP1.done||0)+1; save() }
   // reglas activas: descontar
   S.rules.forEach(r=>r.left--);
   const expired=S.rules.filter(r=>r.left<=0);
@@ -149,12 +297,16 @@ function nextCard(skipped){
   if(expired.length)toast('Regla terminada: '+expired[0].txt);
   // si la actual era regla y no la saltaron, activarla
   if(curCard&&curCard.k==='rg'&&!skipped){
-    let t=adapt(curCard.x).replace(/\{j2\}/g,curP2.n).replace(/\{j\}/g,curP1.n);
+    let t=adapt(curCard.x).replace(/\{j2\}/g,curP2?curP2.n:'alguien').replace(/\{j\}/g,curP1?curP1.n:'alguien');
     S.rules.push({txt:t,left:curCard.n||3});
   }
   setTimeout(()=>{
     S.idx++;
-    if(S.idx>=S.deck.length){S.deck=shuffle(S.mode.deck);S.idx=0;toast('Mazo barajado de nuevo 🔄')}
+    if(S.idx>=S.deck.length){
+      // se rearma el mazo dejando al fondo lo recién visto
+      S.deck=E.buildDeck(S.allCards.length?S.allCards:S.mode.deck,S.recent[S.mode.id]||[]);
+      S.idx=0;
+    }
     showCard(S.deck[S.idx]);
   },200);
 }
@@ -177,18 +329,15 @@ function runTimer(sec,btn,w){
   let t=sec;
   S.timer=setInterval(()=>{
     t--;d.textContent=t;
-    if(t<=0){clearTimer();d.textContent='⏰ ¡TIEMPO!';beep()}
+    if(t>0){
+      sfx.tick(t<=3);                 // los últimos segundos suenan más agudos
+      if(t<=3){ d.classList.add('urgent'); vib(20) }
+    }else{
+      clearTimer();
+      d.textContent='⏰ ¡TIEMPO!';
+      sfx.timeUp(); vib([120,60,120]);
+    }
   },1000);
-}
-function beep(){
-  try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination);
-    o.frequency.value=740;g.gain.setValueAtTime(.25,ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.6);
-    o.start();o.stop(ctx.currentTime+.6);
-  }catch(e){}
 }
 
 /* ---------- swipe ---------- */
@@ -211,14 +360,14 @@ function renderBoard(){
       <div class="nm">${esc(p.n)} ${p.sips===max&&max>0?'<span class="crown">👑</span>':''}</div>
       <div class="sipnum">${p.sips}</div>
       <div class="sipbtns"><button data-a="-1">−</button><button data-a="1">＋</button></div>`;
-    d.querySelectorAll('.sipbtns button').forEach(b=>b.onclick=()=>{p.sips=Math.max(0,p.sips+parseInt(b.dataset.a));renderBoard()});
+    d.querySelectorAll('.sipbtns button').forEach(b=>b.onclick=()=>{p.sips=Math.max(0,p.sips+parseInt(b.dataset.a));renderBoard();save();sfx.tap()});
     L.appendChild(d);
   });
   $('bhint').style.display=S.players.length?'none':'block';
   $('bfoot').textContent=S.players.length?(S.noAlcohol?'Puntos acumulados · el que más tiene paga una penitencia':'Sorbos estimados · si alguien va muy arriba, tócale agua 💧'):'';
 }
 function chg(n,v){const p=S.players.find(p=>p.n===n);if(p){p.sips=Math.max(0,p.sips+v);renderBoard()}}
-function resetSips(){S.players.forEach(p=>p.sips=0);renderBoard();toast('Marcador en cero')}
+function resetSips(){S.players.forEach(p=>p.sips=0);renderBoard();save();toast('Marcador en cero')}
 
 /* ---------- ruleta ---------- */
 let wAngle=0,wSpinning=false;
@@ -243,7 +392,7 @@ function drawWheel(angle){
 function spin(){
   if(wSpinning)return;
   if(S.players.length<2){toast('Agrega jugadores primero');return}
-  wSpinning=true;$('spinbtn').style.opacity=.5;
+  wSpinning=true;sfx.spin();$('spinbtn').style.opacity=.5;
   const extra=6*Math.PI+Math.random()*2*Math.PI;
   const start=wAngle,dur=3200,t0=performance.now();
   function frame(t){
@@ -257,7 +406,7 @@ function spin(){
       const idx=Math.floor(norm/(2*Math.PI/N));
       const who=S.players[idx];
       $('wheelres').innerHTML=`<div class="who">${esc(who.n)}</div><div class="what">${esc(adapt(rnd(WHEEL_DARES)))}</div>`;
-      beep();
+      sfx.win(); vib([40,40,90]);
     }
   }
   requestAnimationFrame(frame);
@@ -329,6 +478,9 @@ function drawKing(){
 
 /* ---------- init ---------- */
 $('pname').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayer()});
+document.querySelectorAll('#lvlChips .chip').forEach(b=>{
+  b.onclick=()=>setIntensity(+b.dataset.l);
+});
 renderModes();
 
 /* ---------- pie de página con el conteo real ---------- */
@@ -339,3 +491,11 @@ function renderFootnote(){
   if(f) f.innerHTML=`${cartas} cartas originales · ${modos} modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.`;
 }
 renderFootnote();
+
+/* ---------- arranque ---------- */
+load();
+$('alcoSwitch').classList.toggle('on',S.noAlcohol);
+$('sndSwitch').classList.toggle('on',S.sound);
+renderChips();
+renderPlayers();
+if(S.players.length) $('gate').querySelector('.card h2').textContent='Bienvenidos de vuelta';

@@ -285,3 +285,54 @@ test('shuffle: con la misma semilla da el mismo resultado', () => {
   const b = E.shuffle([1, 2, 3, 4, 5, 6, 7, 8], lcg(1));
   assert.deepStrictEqual(a, b);
 });
+
+/* ---------------- garantía dura de no repetición ---------------- */
+function jugarTurnos(all, turnos, seed) {
+  const rng = lcg(seed);
+  let recent = [], deck = E.buildDeck(all, recent, { rng }), i = 0;
+  const vistas = [];
+  for (let n = 0; n < turnos; n++) {
+    if (i >= deck.length) { deck = E.buildDeck(all, recent, { rng }); i = 0; }
+    const card = deck[i++];
+    vistas.push(card);
+    recent = E.pushRecent(recent, card, E.RECENT_CAP);
+  }
+  return vistas;
+}
+
+function violaciones(vistas, ventana) {
+  let v = 0;
+  for (let i = 0; i < vistas.length; i++) {
+    if (vistas.slice(Math.max(0, i - ventana), i).includes(vistas[i])) v++;
+  }
+  return v;
+}
+
+test('buildDeck: 300 turnos sobre un mazo de 30 sin repetir dentro de la ventana', () => {
+  const all = Array.from({ length: 30 }, (_, i) => 'r|c' + i);
+  const vistas = jugarTurnos(all, 300, 4);
+  assert.strictEqual(violaciones(vistas, E.windowSize(30)), 0);
+});
+
+test('buildDeck: mazo chico de 12 también respeta su ventana', () => {
+  const all = Array.from({ length: 12 }, (_, i) => 'r|c' + i);
+  const vistas = jugarTurnos(all, 200, 8);
+  assert.strictEqual(violaciones(vistas, E.windowSize(12)), 0);
+});
+
+test('buildDeck: la garantía aguanta con varias semillas', () => {
+  for (const seed of [1, 17, 123, 9999]) {
+    for (const n of [12, 14, 16, 30, 45]) {
+      const all = Array.from({ length: n }, (_, i) => 'r|c' + i);
+      const v = violaciones(jugarTurnos(all, 200, seed), E.windowSize(n));
+      assert.strictEqual(v, 0, `mazo ${n}, semilla ${seed}: ${v} repeticiones`);
+    }
+  }
+});
+
+test('buildDeck: sigue barajando (dos ciclos no salen idénticos)', () => {
+  const all = Array.from({ length: 30 }, (_, i) => 'r|c' + i);
+  const vistas = jugarTurnos(all, 90, 21);
+  const c1 = vistas.slice(0, 30).join(), c2 = vistas.slice(30, 60).join(), c3 = vistas.slice(60, 90).join();
+  assert.ok(c1 !== c2 || c2 !== c3, 'los ciclos no deberían ser siempre iguales');
+});

@@ -138,6 +138,85 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (S().rules.length > 6) throw new Error('se acumularon ' + S().rules.length + ' reglas');
   });
 
+  await run('bolsa de turnos: reparto parejo entre jugadores', async () => {
+    const m = MODES()[0];
+    W.startMode(m);
+    const conteo = {};
+    for (let i = 0; i < 40; i++) {
+      const nombre = $('gcard').querySelector('.pj');
+      if (nombre) conteo[nombre.textContent] = (conteo[nombre.textContent] || 0) + 1;
+      await avanzar(false);
+    }
+    const veces = Object.values(conteo);
+    if (veces.length < 4) throw new Error('solo salieron ' + veces.length + ' jugadores distintos');
+    const dif = Math.max(...veces) - Math.min(...veces);
+    if (dif > 2) throw new Error('reparto desparejo: ' + JSON.stringify(conteo));
+    logs.push('   turnos por jugador: ' + JSON.stringify(conteo));
+  });
+
+  await run('chips de intensidad filtran el contenido', async () => {
+    const chips = W.document.querySelectorAll('#lvlChips .chip');
+    if (chips.length !== 3) throw new Error('no están los 3 chips');
+    const hot = MODES().find(m => m.id === 'hot');
+
+    chips[2].click();                       // picante
+    if (ev('S').intensity !== 3) throw new Error('el chip picante no aplicó');
+    W.startMode(hot);
+    const picante = ev('S').allCards.length;
+
+    chips[0].click();                       // suave
+    if (ev('S').intensity !== 1) throw new Error('el chip suave no aplicó');
+    W.startMode(MODES().find(m => m.id === 'previa'));
+    const suave = ev('S').allCards.length;
+    if (!suave) throw new Error('el nivel suave dejó Previa sin cartas');
+
+    chips[2].click();
+    logs.push('   hot en picante: ' + picante + ' cartas · previa en suave: ' + suave);
+  });
+
+  await run('la memoria sobrevive al cierre', () => {
+    ev('S').players[0].sips = 7;
+    W.save();
+    const guardado = JSON.parse(W.localStorage.getItem('carreteo.v2'));
+    if (!guardado || guardado.players[0].sips !== 7) throw new Error('no guardó los sorbos');
+    if (!('intensity' in guardado) || !('sound' in guardado)) throw new Error('faltan preferencias');
+    // simula reabrir: se vacía el estado y se recarga del storage
+    ev('S').players = [];
+    W.load();
+    if (ev('S').players.length !== 4) throw new Error('no recuperó los jugadores');
+    if (ev('S').players[0].sips !== 7) throw new Error('no recuperó el marcador');
+    logs.push('   recuperados ' + ev('S').players.length + ' jugadores con su marcador');
+  });
+
+  await run('partida nueva deja el marcador en cero sin perder jugadores', () => {
+    W.newGame();
+    const ps = ev('S').players;
+    if (ps.length !== 4) throw new Error('perdió jugadores');
+    if (ps.some(p => p.sips || p.done || p.skip)) throw new Error('no limpió los contadores');
+  });
+
+  await run('se cuentan retos hechos y saltados', async () => {
+    W.startMode(MODES()[0]);
+    let conNombre = 0;
+    for (let i = 0; i < 12; i++) {
+      if ($('gcard').querySelector('.pj')) conNombre++;   // solo esas cuentan
+      await avanzar(i % 2 === 0);
+    }
+    const ps = ev('S').players;
+    const hechos = ps.reduce((a, p) => a + (p.done || 0), 0);
+    const saltados = ps.reduce((a, p) => a + (p.skip || 0), 0);
+    if (hechos + saltados !== conNombre) {
+      throw new Error('se contaron ' + (hechos + saltados) + ' pero ' + conNombre + ' cartas nombraban a alguien');
+    }
+    if (!hechos || !saltados) throw new Error('faltó contar hechos o saltados');
+    logs.push('   hechos: ' + hechos + ' · saltados: ' + saltados + ' (de ' + conNombre + ' cartas con nombre)');
+  });
+
+  await run('el switch de sonido no rompe nada', () => {
+    W.toggleSound(); W.toggleSound();
+    W.toggleAlcohol(); W.toggleAlcohol();
+  });
+
   await run('marcador', () => {
     W.go('board');
     if (!$('blist').children.length) throw new Error('marcador vacío');

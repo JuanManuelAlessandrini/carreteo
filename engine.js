@@ -162,12 +162,19 @@
     var cards = (all || []).slice();
     var win = windowSize(cards.length, o.cap);
     var tail = win > 0 ? (recent || []).slice(-win) : [];
-    var isRecent = Object.create(null);
-    tail.forEach(function (c) { isRecent[c] = true; });
+
+    // posición en la cola de vistas: 0 = la más antigua de la ventana
+    var age = Object.create(null);
+    tail.forEach(function (c, i) { age[c] = i; });
 
     var fresh = [], stale = [];
-    cards.forEach(function (c) { (isRecent[c] ? stale : fresh).push(c); });
-    return shuffle(fresh, o.rng).concat(shuffle(stale, o.rng));
+    cards.forEach(function (c) { (c in age ? stale : fresh).push(c); });
+
+    // Las frescas van barajadas al frente. Las vistas hace poco van
+    // atrás y en orden de antigüedad: así la última que salió es la
+    // última en volver, y ninguna reaparece dentro de la ventana.
+    stale.sort(function (a, b) { return age[a] - age[b]; });
+    return shuffle(fresh, o.rng).concat(stale);
   }
 
   function pushRecent(recent, card, cap) {
