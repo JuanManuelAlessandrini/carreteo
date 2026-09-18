@@ -14,7 +14,7 @@ const adapt=t=>E.adapt(t,S.noAlcohol);
 
 const S={
   /* se guarda entre sesiones */
-  players:[], noAlcohol:false, intensity:3, sound:true, mix:[], startedAt:0,
+  players:[], noAlcohol:false, intensity:3, sound:true, mix:[], startedAt:0, totalDrawn:0,
   /* solo de esta sesión */
   mode:null, deck:[], allCards:[], idx:0, rules:[], prev:'home', drawn:0,
   kings:[], kingCount:0, timer:null,
@@ -34,7 +34,7 @@ function save(){
   try{
     localStorage.setItem(SKEY,JSON.stringify({
       players:S.players, noAlcohol:S.noAlcohol, intensity:S.intensity,
-      sound:S.sound, mix:S.mix, startedAt:S.startedAt
+      sound:S.sound, mix:S.mix, startedAt:S.startedAt, totalDrawn:S.totalDrawn
     }));
   }catch(e){/* modo incógnito o storage lleno: se juega igual */}
 }
@@ -54,6 +54,7 @@ function load(){
     S.sound=d.sound!==false;
     S.mix=Array.isArray(d.mix)?d.mix:[];
     S.startedAt=+d.startedAt||0;
+    S.totalDrawn=+d.totalDrawn||0;
   }catch(e){/* datos corruptos: se empieza de cero */}
 }
 
@@ -105,6 +106,7 @@ function go(id){
   if(id==='players') renderPlayers();
   if(id==='modes') renderModes();
   if(id==='board') renderBoard();
+  if(id==='summary') renderSummary();
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
@@ -150,13 +152,13 @@ function addPlayer(){
 function delPlayer(i){S.players.splice(i,1);S.bag={};renderPlayers();save()}
 function newGame(){
   S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0});
-  S.recent={}; S.bag={}; S.startedAt=Date.now();
+  S.recent={}; S.bag={}; S.startedAt=Date.now(); S.totalDrawn=0;
   renderPlayers(); save();
   toast('Partida nueva: marcador en cero, mismos jugadores 🔄');
 }
 function clearAll(){
   if(!confirm('¿Borrar los jugadores y el marcador guardados?')) return;
-  S.players=[]; S.recent={}; S.bag={}; S.startedAt=0;
+  S.players=[]; S.recent={}; S.bag={}; S.startedAt=0; S.totalDrawn=0;
   try{ localStorage.removeItem(SKEY) }catch(e){}
   renderPlayers();
   toast('Todo borrado');
@@ -293,7 +295,7 @@ function showCard(raw,forceP1){
   }
   renderQuick(txt,c,p1,p2);
   renderRules();
-  S.drawn++;$('gcount').textContent=`carta ${S.drawn}`;
+  S.drawn++;S.totalDrawn++;$('gcount').textContent=`carta ${S.drawn}`;
 }
 function renderQuick(txt,c,p1,p2){
   const q=$('quickadd');q.innerHTML='';
@@ -391,6 +393,132 @@ function renderBoard(){
 }
 function chg(n,v){const p=S.players.find(p=>p.n===n);if(p){p.sips=Math.max(0,p.sips+v);renderBoard()}}
 function resetSips(){S.players.forEach(p=>p.sips=0);renderBoard();save();toast('Marcador en cero')}
+
+/* ---------- resumen de la noche ----------
+   Arma el resumen con E.summary(): el mismo objeto sirve para pintar
+   la pantalla y para dibujar la imagen para compartir.
+-------------------------------------------*/
+function fmtMin(min){
+  if(min<60) return `${min} min`;
+  const h=Math.floor(min/60),m=min%60;
+  return m?`${h} h ${m} min`:`${h} h`;
+}
+function renderSummary(){
+  const box=$('sumbox');
+  if(!S.players.length){
+    box.innerHTML=`<div class="emptyhint">Todavía no hay nada que resumir.<br>Agrega jugadores y jueguen un rato 🎉</div>`;
+    return;
+  }
+  const s=E.summary(S.players,{drawn:S.totalDrawn,startedAt:S.startedAt},Date.now());
+  const word=adapt('sorbos');
+  let html='';
+  const podio=s.ranking.slice(0,3);
+  if(podio.length){
+    html+=`<div class="podium">${podio.map((p,i)=>`
+      <div class="podspot p${i+1}">
+        <div class="podav" style="background:${p.c}">${esc(p.n[0].toUpperCase())}</div>
+        <div class="podnm">${esc(p.n)}</div>
+        <div class="podn">${p.sips||0}</div>
+      </div>`).join('')}</div>`;
+  }
+  const resto=s.ranking.slice(3);
+  if(resto.length){
+    html+=`<div class="sumlist">${resto.map((p,i)=>`
+      <div class="sumrow"><span class="sumpos">${i+4}</span>
+        <div class="pav" style="background:${p.c}">${esc(p.n[0].toUpperCase())}</div>
+        <div class="nm">${esc(p.n)}</div><div class="sipnum">${p.sips||0}</div></div>`).join('')}</div>`;
+  }
+  if(s.brave){
+    html+=`<div class="sumcard"><span class="sumtag">El valiente 💪</span>
+      <div class="sumbig">${esc(s.brave.n)}</div>
+      <div class="sumsub">${s.brave.done} retos cumplidos</div></div>`;
+  }
+  if(s.chicken){
+    html+=`<div class="sumcard"><span class="sumtag">El gallina 🐔</span>
+      <div class="sumbig">${esc(s.chicken.n)}</div>
+      <div class="sumsub">${s.chicken.skip} retos saltados</div></div>`;
+  }
+  html+=`<div class="sumstats">
+    <div class="sumstat"><div class="sn">${s.cards}</div><div class="sl">cartas jugadas</div></div>
+    <div class="sumstat"><div class="sn">${fmtMin(s.minutes)}</div><div class="sl">de carrete</div></div>
+    <div class="sumstat"><div class="sn">${s.total}</div><div class="sl">${esc(word)} repartidos</div></div>
+  </div>`;
+  box.innerHTML=html;
+}
+
+/* rectángulo con esquinas redondeadas para el canvas, sin depender
+   de ctx.roundRect() que aún no está en todos los navegadores */
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+async function shareSummary(){
+  if(!S.players.length){toast('Agrega jugadores primero');return}
+  try{
+    const s=E.summary(S.players,{drawn:S.totalDrawn,startedAt:S.startedAt},Date.now());
+    const word=adapt('sorbos');
+    const W=1080,H=1350;
+    const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+    const cx=cv.getContext('2d');
+    if(document.fonts&&document.fonts.ready) await document.fonts.ready.catch(()=>{});
+    const grad=cx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#2a2240');grad.addColorStop(1,'#17131f');
+    cx.fillStyle=grad;cx.fillRect(0,0,W,H);
+    cx.textAlign='center';
+    cx.fillStyle='#ff3d7f';cx.font='400 92px Anton, Impact, sans-serif';
+    cx.fillText('CARRETEO',W/2,150);
+    cx.fillStyle='#a99cc4';cx.font='500 32px Space Grotesk, sans-serif';
+    cx.fillText('Resumen de la noche',W/2,196);
+    let y=270;const rowH=100;
+    s.ranking.slice(0,6).forEach((p,i)=>{
+      cx.fillStyle=p.c;roundRect(cx,90,y,900,rowH-18,22);cx.fill();
+      cx.fillStyle='#17131f';cx.font='700 38px Space Grotesk, sans-serif';cx.textAlign='center';
+      cx.fillText((p.n[0]||'?').toUpperCase(),150,y+(rowH-18)/2+14);
+      cx.textAlign='left';cx.font='700 34px Space Grotesk, sans-serif';
+      const nm=p.n.length>17?p.n.slice(0,16)+'…':p.n;
+      cx.fillText(`${i+1}. ${nm}`,210,y+(rowH-18)/2+12);
+      cx.textAlign='right';cx.font='400 36px Anton, Impact, sans-serif';
+      cx.fillText(String(p.sips||0),940,y+(rowH-18)/2+13);
+      cx.textAlign='left';
+      y+=rowH;
+    });
+    y+=24;
+    const filas=[];
+    if(s.brave) filas.push(['El valiente 💪',`${s.brave.n} · ${s.brave.done} retos`]);
+    if(s.chicken) filas.push(['El gallina 🐔',`${s.chicken.n} · ${s.chicken.skip} saltados`]);
+    filas.push(['Cartas jugadas',String(s.cards)]);
+    filas.push(['Duración',fmtMin(s.minutes)]);
+    filas.push([`Total de ${word}`,String(s.total)]);
+    cx.font='500 30px Space Grotesk, sans-serif';
+    filas.forEach(([label,val])=>{
+      cx.fillStyle='#a99cc4';cx.textAlign='left';cx.fillText(label,90,y);
+      cx.fillStyle='#f5f0ff';cx.textAlign='right';cx.fillText(val,990,y);
+      y+=52;
+    });
+    cx.textAlign='center';cx.fillStyle='#3a3152';cx.font='400 22px Space Grotesk, sans-serif';
+    cx.fillText('carreteo · el juego de fiesta gratis',W/2,H-40);
+
+    const blob=await new Promise(res=>cv.toBlob(res,'image/png'));
+    if(!blob) throw new Error('sin blob');
+    const file=new File([blob],'carreteo.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Carreteo',text:'Resumen de la noche 🎉'});
+      return;
+    }
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='carreteo.png';
+    document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    if(e&&e.name==='AbortError') return;   // el usuario cerró el share sheet: no es un error
+    toast('No se pudo generar la imagen');
+  }
+}
 
 /* ---------- ruleta ---------- */
 let wAngle=0,wSpinning=false;
@@ -691,3 +819,32 @@ $('sndSwitch').classList.toggle('on',S.sound);
 renderChips();
 renderPlayers();
 if(S.players.length) $('gate').querySelector('.card h2').textContent='Bienvenidos de vuelta';
+/* ---------- service worker ----------
+   Solo sobre http(s): abierto como archivo suelto no se puede registrar,
+   y ahi tampoco hace falta porque ya esta todo local.
+   Cuando entra una version nueva se avisa en vez de recargar de golpe,
+   para no cortar una partida en curso.
+--------------------------------------*/
+function initSW(){
+  if(!('serviceWorker' in navigator)) return;
+  if(!/^https?:$/.test(location.protocol)) return;
+  navigator.serviceWorker.register('./sw.js').then(reg=>{
+    reg.addEventListener('updatefound',()=>{
+      const nuevo=reg.installing;
+      if(!nuevo) return;
+      nuevo.addEventListener('statechange',()=>{
+        if(nuevo.state==='installed'&&navigator.serviceWorker.controller){
+          const t=$('toast');
+          t.textContent='Hay una version nueva. Toca aqui para actualizar.';
+          t.classList.add('show');
+          t.style.pointerEvents='auto';
+          t.onclick=()=>{ nuevo.postMessage({type:'SKIP_WAITING'}); location.reload() };
+          clearTimeout(t._x);
+          t._x=setTimeout(()=>{t.classList.remove('show');t.style.pointerEvents='none';t.onclick=null},12000);
+        }
+      });
+    });
+  }).catch(()=>{});
+}
+initSW();
+

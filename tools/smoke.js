@@ -313,6 +313,61 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (!$('blist').children.length) throw new Error('marcador vacío');
   });
 
+  await run('resumen de la noche', () => {
+    ev('S').players[0].sips = 12; ev('S').players[0].done = 9;
+    ev('S').players[1].sips = 4;  ev('S').players[1].skip = 6;
+    ev('S').totalDrawn = 57;
+    W.go('summary');
+    const t = $('sumbox').textContent;
+    if (!$('sumbox').querySelector('.podium')) throw new Error('no dibujó el podio');
+    if (!/57/.test(t)) throw new Error('no muestra las cartas jugadas');
+    if (!/valiente/i.test(t)) throw new Error('falta el valiente');
+    if (!/gallina/i.test(t)) throw new Error('falta el gallina');
+    if (!/sorbos/i.test(t)) throw new Error('no dice sorbos');
+    // el primero del podio tiene que ser el que más tomó
+    const primero = $('sumbox').querySelector('.podium .podnm').textContent;
+    if (primero !== ev('S').players[0].n) throw new Error('el podio no está ordenado: ' + primero);
+    logs.push('   podio encabezado por ' + primero);
+  });
+
+  await run('resumen en modo sin alcohol dice puntos', () => {
+    W.setNoAlcohol(true);
+    W.go('summary');
+    const t = $('sumbox').textContent;
+    if (/\bsorbos\b/i.test(t)) throw new Error('quedó "sorbos" en modo sin alcohol');
+    if (!/puntos/i.test(t)) throw new Error('no tradujo a puntos');
+    W.setNoAlcohol(false);
+  });
+
+  await run('resumen sin jugadores no explota', () => {
+    const guardados = ev('S').players.slice();
+    ev('S').players.length = 0;
+    W.go('summary');
+    if (!$('sumbox').textContent.trim()) throw new Error('quedó vacío sin mensaje');
+    guardados.forEach(p => ev('S').players.push(p));
+  });
+
+  await run('PWA: manifest, íconos y service worker declarados', () => {
+    const man = W.document.querySelector('link[rel="manifest"]');
+    if (!man) throw new Error('falta el <link rel=manifest>');
+    if (!W.document.querySelector('link[rel="apple-touch-icon"]')) throw new Error('falta el ícono de iOS');
+    const fs2 = require('fs'), path2 = require('path');
+    const m = JSON.parse(fs2.readFileSync(path2.join(ROOT, 'manifest.json'), 'utf8'));
+    if (m.display !== 'standalone') throw new Error('el manifest no abre en standalone');
+    if (!m.icons.some(i => i.purpose === 'maskable')) throw new Error('falta el ícono maskable');
+    m.icons.forEach(i => {
+      if (!fs2.existsSync(path2.join(ROOT, i.src))) throw new Error('no existe ' + i.src);
+    });
+    const sw = fs2.readFileSync(path2.join(ROOT, 'sw.js'), 'utf8');
+    const ver = sw.match(/CACHE\s*=\s*'([^']+)'/);
+    if (!ver) throw new Error('sw.js no declara la versión del cache');
+    // todo archivo que la página carga tiene que estar precacheado
+    ['index.html', 'cards.js', 'engine.js', 'app.js'].forEach(f => {
+      if (!sw.includes(f)) throw new Error('sw.js no precachea ' + f);
+    });
+    logs.push('   cache: ' + ver[1] + ' · ' + m.icons.length + ' íconos');
+  });
+
   await run('ruleta', () => { W.go('ruleta'); W.spin(); });
 
   await run('impostor', () => {
