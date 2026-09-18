@@ -108,6 +108,7 @@ function go(id){
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
+  if(id==='bomba') initBomb(); else clearBomb();
 }
 function closeGate(){$('gate').style.display='none'}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._x);t._x=setTimeout(()=>t.classList.remove('show'),2200)}
@@ -182,6 +183,9 @@ function tile(m,onclick){
   b.onclick=onclick;return b;
 }
 function renderModes(){
+  const mx=$('mgridMix');mx.innerHTML='';
+  mx.appendChild(tile({nm:'Mix',em:'🎰',c:'#e879f9',
+    ds:'Elige tus modos favoritos y se revuelven en un solo mazo.'},openMix));
   const g=$('mgridCards');g.innerHTML='';
   MODES.filter(m=>!m.season).forEach(m=>g.appendChild(tile(m,()=>startMode(m))));
   const s=$('mgridSpecial');s.innerHTML='';
@@ -210,14 +214,16 @@ function deckFor(m){
 
 function startMode(m){
   if(m.min&&S.players.length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
-  S.mode=m;
-  S.allCards=deckFor(m);
-  S.deck=E.buildDeck(S.allCards,S.recent[m.id]||[]);
-  S.idx=0;S.rules=[];S.drawn=0;
+  S.mode=m;S.rules=[];S.drawn=0;
   if(!S.startedAt) S.startedAt=Date.now();
   document.documentElement.style.setProperty('--accent',m.c);
   go('game');
   $('gmode').textContent=`${m.em} ${m.nm}`;
+  // Verdad o reto no reparte carta de entrada: primero el jugador elige.
+  if(m.pick){ S.vorDeck={};S.vorIdx={};showPick();return }
+  S.allCards=deckFor(m);
+  S.deck=E.buildDeck(S.allCards,S.recent[m.id]||[]);
+  S.idx=0;
   showCard(S.deck[0]);
 }
 
@@ -230,31 +236,47 @@ function pickPlayers(){
   const p2=S.players[r.i2]||p1;
   return [p1,p2];
 }
+function otherThan(p){
+  if(S.players.length<2) return p;
+  return rnd(S.players.filter(x=>x!==p));
+}
 let curCard=null,curP1=null,curP2=null;
-function showCard(raw){
+function showCard(raw,forceP1){
   clearTimer();
-  if(S.mode) S.recent[S.mode.id]=E.pushRecent(S.recent[S.mode.id],raw,E.RECENT_CAP);
+  if(S.mode&&!S.mode.pick) S.recent[S.mode.id]=E.pushRecent(S.recent[S.mode.id],raw,E.RECENT_CAP);
   sfx.card(); vib(12);
   const c=parseCard(raw);curCard=c;
   // La bolsa solo avanza si la carta nombra a alguien. Si avanzara también
   // en las cartas grupales ("el último en tocar algo rojo"), se gastarían
   // turnos invisibles y el reparto visible volvería a ser puro azar.
   const nombra=/\{j2?\}/.test(c.x);
-  const [p1,p2]=nombra?pickPlayers():[null,null];
+  let p1=null,p2=null;
+  if(nombra){
+    if(forceP1){ p1=forceP1; p2=otherThan(forceP1) }
+    else { const r=pickPlayers(); p1=r[0]; p2=r[1] }
+  }
   curP1=p1;curP2=p2;
+  // en Mix cada carta se pinta con el color de su modo de origen
+  const origen=S.mode&&S.mode.mix&&S.mixMap?S.mixMap[raw]:null;
+  if(origen) document.documentElement.style.setProperty('--accent',origen.c);
   let ans=null,txt=c.x;
   if(c.k==='p'&&txt.includes('§')){[txt,ans]=txt.split('§')}
+  if(c.k==='pc'){txt=c.parts[0]}
   const html=esc(adapt(txt))
     .replace(/\{j2\}/g,p2?`<span class="pj">${esc(p2.n)}</span>`:'alguien')
     .replace(/\{j\}/g,p1?`<span class="pj">${esc(p1.n)}</span>`:'alguien');
   const card=$('gcard');
   card.classList.remove('out');
   card.style.animation='none';void card.offsetWidth;card.style.animation='';
-  card.innerHTML=`<span class="ctype">${TYPES[c.k]?TYPES[c.k].l:'Carta'}${c.k==='rg'?` · ${c.n} rondas`:''}</span>
+  const etiqueta=(TYPES[c.k]?TYPES[c.k].l:'Carta')
+    +(c.k==='rg'?` · ${c.n} rondas`:'')
+    +(origen?` · ${esc(origen.nm)}`:'');
+  card.innerHTML=`<span class="ctype">${etiqueta}</span>
     <div class="ctext">${html}</div>
     ${S.mode.ds&&(c.k==='mm'||c.k==='sh')?`<div class="csub">${esc(adapt(S.mode.ds))}</div>`:''}
     <div class="cwidget" id="cwidget"></div>`;
   const w=$('cwidget');
+  if(c.k==='pc') renderPremio(c,w,p1);
   if(c.k==='tm'){
     const b=document.createElement('button');b.className='wbtn';b.textContent=`▶ Iniciar ${c.n}s`;
     b.onclick=()=>runTimer(c.n,b,w);w.appendChild(b);
@@ -301,6 +323,7 @@ function nextCard(skipped){
     S.rules.push({txt:t,left:curCard.n||3});
   }
   setTimeout(()=>{
+    if(S.mode&&S.mode.pick){ showPick(); return }   // vuelve a "verdad o reto"
     S.idx++;
     if(S.idx>=S.deck.length){
       // se rearma el mazo dejando al fondo lo recién visto
@@ -482,6 +505,175 @@ document.querySelectorAll('#lvlChips .chip').forEach(b=>{
   b.onclick=()=>setIntensity(+b.dataset.l);
 });
 renderModes();
+
+/* =========================================================
+   MODOS NUEVOS
+   ========================================================= */
+
+/* ---------- Premio o castigo ----------
+   La carta muestra solo el reto. El grupo juzga con dos botones y ahi
+   recien se revela el premio o el castigo. El castigo se anota solo;
+   el premio suele ser "reparte", que lo decide una persona.
+-----------------------------------------*/
+function renderPremio(c,w,p1){
+  const premio=c.parts[1]||'Te salvaste', castigo=c.parts[2]||'Toma 2 sorbos';
+  const row=document.createElement('div');row.className='pcrow';
+  const mk=(label,cls,texto,gana)=>{
+    const b=document.createElement('button');
+    b.className='wbtn '+cls;b.textContent=label;
+    b.onclick=()=>{
+      row.remove();
+      const d=document.createElement('div');
+      d.className='answer '+(gana?'good':'bad');
+      d.textContent=(gana?'\U0001F381 ':'\U0001F480 ')+adapt(texto);
+      w.appendChild(d);
+      if(gana){
+        sfx.win(); vib([30,40,70]);
+        toast('¡Lo logró! \U0001F389');
+      }else{
+        const n=E.sipsInText(adapt(castigo));
+        if(p1){p1.sips+=n;save()}
+        sfx.bad(); vib(170);
+        toast(p1?`${p1.n}: +${n} ${S.noAlcohol?'puntos':'sorbos'} \U0001F480`:'Castigo aplicado \U0001F480');
+      }
+    };
+    return b;
+  };
+  row.appendChild(mk('✅ Lo logró','good',premio,true));
+  row.appendChild(mk('❌ Falló','bad',castigo,false));
+  w.appendChild(row);
+}
+
+/* ---------- Verdad o reto ----------
+   Primero el jugador elige a ciegas, despues sale la carta. Cada lista
+   lleva su propio historial para que tampoco se repitan entre si.
+-------------------------------------*/
+function showPick(){
+  clearTimer();
+  const [p1]=pickPlayers();
+  curCard=null;curP1=p1;curP2=null;
+  const card=$('gcard');
+  card.classList.remove('out');
+  card.style.animation='none';void card.offsetWidth;card.style.animation='';
+  card.innerHTML=`<span class="ctype">Te toca</span>
+    <div class="ctext">${esc(p1?p1.n:'Alguien')}, ¿qué eliges?</div>
+    <div class="csub">Elige antes de ver la carta. Después no se puede cambiar.</div>
+    <div class="cwidget" id="cwidget"></div>`;
+  const w=$('cwidget');
+  const row=document.createElement('div');row.className='pcrow';
+  const mk=(label,cls,cual)=>{
+    const b=document.createElement('button');b.className='wbtn '+cls;b.textContent=label;
+    b.onclick=()=>{sfx.tap();drawVor(cual,p1)};
+    return b;
+  };
+  row.appendChild(mk('\U0001F910 Verdad','good','truths'));
+  row.appendChild(mk('\U0001F525 Reto','bad','dares'));
+  w.appendChild(row);
+  $('quickadd').innerHTML='';
+  renderRules();
+}
+function drawVor(cual,p){
+  const lista=E.filterByIntensity(TRUTH_DARE[cual],S.mode.lvl,S.intensity);
+  const pool=lista.length?lista:TRUTH_DARE[cual];
+  const key='vor:'+cual;
+  if(!S.vorDeck[cual]||S.vorIdx[cual]>=S.vorDeck[cual].length){
+    S.vorDeck[cual]=E.buildDeck(pool,S.recent[key]||[]);
+    S.vorIdx[cual]=0;
+  }
+  const raw=S.vorDeck[cual][S.vorIdx[cual]++];
+  S.recent[key]=E.pushRecent(S.recent[key],raw,E.RECENT_CAP);
+  showCard(raw,p);
+}
+
+/* ---------- Mix ----------
+   Une los mazos elegidos sin duplicados y recuerda de que modo vino
+   cada carta, para mostrarlo y pintarla con su color.
+----------------------------*/
+function openMix(){
+  const box=$('mixlist');box.innerHTML='';
+  MODES.filter(m=>!m.pick).forEach(m=>{
+    const b=document.createElement('button');
+    b.className='mixrow'+(S.mix.indexOf(m.id)>=0?' on':'');
+    b.innerHTML=`<span class="mem">${m.em}</span><span class="mnm">${esc(m.nm)}</span>
+      <span class="mct">${m.deck.length}</span><span class="tick">✓</span>`;
+    b.onclick=()=>{
+      const i=S.mix.indexOf(m.id);
+      if(i>=0) S.mix.splice(i,1); else S.mix.push(m.id);
+      b.classList.toggle('on');
+      save(); sfx.tap(); updateMixBtn();
+    };
+    box.appendChild(b);
+  });
+  updateMixBtn();
+  go('mixpick');
+}
+function updateMixBtn(){
+  const n=E.buildMixDeck(MODES,S.mix,S.intensity).length;
+  const b=$('mixgo');
+  const listo=S.mix.length>=2&&n>=10;
+  b.disabled=!listo;
+  b.style.opacity=listo?1:.4;
+  b.textContent=listo?`Jugar mix · ${n} cartas`:'Elige al menos 2 modos';
+}
+function startMix(){
+  const mezcla=E.buildMixDeck(MODES,S.mix,S.intensity);
+  if(mezcla.length<10){toast('Elige al menos 2 modos');return}
+  S.mixMap={};
+  mezcla.forEach(x=>{S.mixMap[x.card]={nm:x.nm,c:x.color}});
+  startMode({id:'mix',nm:'Mix',em:'\U0001F3B0',c:'#e879f9',mix:true,lvl:S.intensity,
+    ds:'Tus modos favoritos, todos revueltos.',deck:mezcla.map(x=>x.card)});
+}
+
+/* ---------- La bomba ----------
+   Categoria al azar y mecha oculta. El tic-tac acelera al final:
+   nadie sabe cuanto queda, esa es la gracia.
+--------------------------------*/
+let BOMB={t:null,running:false,left:0};
+function clearBomb(){ if(BOMB.t){clearTimeout(BOMB.t);BOMB.t=null} BOMB.running=false }
+function initBomb(){
+  clearBomb();
+  $('bombabox').innerHTML=`<div class="bombcard" id="bombcard">
+      <div class="bombemoji" id="bombemoji">\U0001F4A3</div>
+      <div class="bombcat" id="bombcat">Toca encender para sacar categoría</div>
+      <div class="bombhint" id="bombhint">Por turnos, cada uno dice un ejemplo y pasa el celular.
+      A quien le explote, ${S.noAlcohol?'suma 3 puntos':'toma 3 sorbos'}.</div>
+    </div>`;
+  $('bombbtn').textContent='\U0001F525 Encender la mecha';
+}
+function toggleBomb(){
+  if(BOMB.running){ clearBomb(); initBomb(); toast('Mecha apagada'); return }
+  if(S.players.length<3){ toast('La bomba necesita al menos 3 jugadores'); return }
+  $('bombcat').textContent=rnd(BOMB_CATS);
+  $('bombemoji').textContent='\U0001F9E8';
+  $('bombcard').className='bombcard lit';
+  $('bombhint').textContent=`Empieza ${rnd(S.players).n}. ¡Rápido!`;
+  $('bombbtn').textContent='✋ Apagar';
+  BOMB.running=true;
+  BOMB.left=18+Math.floor(Math.random()*28);   // entre 18 y 45 tics, oculto
+  bombTick(BOMB.left);
+}
+function bombTick(total){
+  if(!BOMB.running) return;
+  BOMB.left--;
+  if(BOMB.left<=0){ bombBoom(); return }
+  const queda=BOMB.left/total;
+  sfx.tick(queda<.35);
+  if(queda<.35) vib(8);
+  const espera=queda<.25?420:queda<.5?680:950;   // el tic-tac acelera
+  BOMB.t=setTimeout(()=>bombTick(total),espera);
+}
+function bombBoom(){
+  clearBomb();
+  $('bombcard').className='bombcard boom';
+  $('bombemoji').textContent='\U0001F4A5';
+  $('bombcat').textContent='¡BOOM!';
+  $('bombhint').textContent=S.noAlcohol
+    ? 'A quien le explotó: suma 3 puntos. Vuelve a encender para otra ronda.'
+    : 'A quien le explotó: toma 3 sorbos. Vuelve a encender para otra ronda.';
+  $('bombbtn').textContent='\U0001F504 Otra ronda';
+  sfx.boom(); vib([200,80,400]);
+}
+
 
 /* ---------- pie de página con el conteo real ---------- */
 function renderFootnote(){

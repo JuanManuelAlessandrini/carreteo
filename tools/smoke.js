@@ -111,6 +111,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
   await run('jugar 40 turnos en cada modo', async () => {
     let peor = null;
     for (const m of MODES()) {
+      if (m.pick) continue;            // Verdad o reto tiene su propio test
       W.startMode(m);
       const vistas = [];
       for (let i = 0; i < 40; i++) {
@@ -215,6 +216,96 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
   await run('el switch de sonido no rompe nada', () => {
     W.toggleSound(); W.toggleSound();
     W.toggleAlcohol(); W.toggleAlcohol();
+  });
+
+  await run('premio o castigo: los botones aplican el resultado', async () => {
+    const premio = MODES().find(m => m.id === 'premio');
+    if (!premio) throw new Error('falta el modo premio');
+    W.startMode(premio);
+
+    const total = () => ev('S').players.reduce((a, p) => a + p.sips, 0);
+    const antes = total();
+    let btns = $('cwidget').querySelectorAll('.wbtn');
+    if (btns.length !== 2) throw new Error('no salieron los dos botones de juicio');
+    btns[1].click();                                  // falló
+    if (!$('cwidget').querySelector('.answer.bad')) throw new Error('no reveló el castigo');
+    if (total() <= antes) throw new Error('el castigo no anotó sorbos en el marcador');
+    logs.push('   castigo anotó ' + (total() - antes) + ' sorbos');
+
+    await avanzar(false);
+    btns = $('cwidget').querySelectorAll('.wbtn');
+    if (btns.length !== 2) throw new Error('la segunda carta no trajo botones');
+    const antes2 = total();
+    btns[0].click();                                  // lo logró
+    if (!$('cwidget').querySelector('.answer.good')) throw new Error('no reveló el premio');
+    if (total() !== antes2) throw new Error('el premio no debería anotar sorbos solo');
+  });
+
+  await run('verdad o reto: elige primero y no repite', async () => {
+    const vor = MODES().find(m => m.id === 'vor');
+    W.startMode(vor);
+    const vistas = [];
+    for (let i = 0; i < 16; i++) {
+      const btns = $('cwidget').querySelectorAll('.wbtn');
+      if (btns.length !== 2) throw new Error('turno ' + i + ': no aparecieron Verdad y Reto');
+      if (!/eliges/.test($('gcard').textContent)) throw new Error('turno ' + i + ': no volvió a preguntar');
+      btns[i % 2].click();                            // alterna verdad y reto
+      const t = $('gcard').querySelector('.ctext').textContent;
+      if (/eliges/.test(t)) throw new Error('turno ' + i + ': no sacó carta');
+      vistas.push(t);
+      await avanzar(false);
+    }
+    const verdades = vistas.filter((_, i) => i % 2 === 0);
+    const retos = vistas.filter((_, i) => i % 2 === 1);
+    // no puede no-repetir más cartas de las que tiene el mazo
+    const td = ev('TRUTH_DARE');
+    const nv = Math.min(verdades.length, td.truths.length);
+    const nr = Math.min(retos.length, td.dares.length);
+    if (new Set(verdades.slice(0, nv)).size !== nv) throw new Error('se repitió una verdad');
+    if (new Set(retos.slice(0, nr)).size !== nr) throw new Error('se repitió un reto');
+    logs.push('   ' + nv + ' verdades y ' + nr + ' retos sin repetir (mazos de ' +
+      td.truths.length + ' y ' + td.dares.length + ')');
+  });
+
+  await run('mix: junta modos y muestra el origen de cada carta', async () => {
+    W.openMix();
+    const filas = W.document.querySelectorAll('#mixlist .mixrow');
+    if (filas.length < 10) throw new Error('la lista trae solo ' + filas.length + ' modos');
+    ev('S').mix.length = 0;
+    filas[0].click(); filas[1].click(); filas[2].click();
+    if (ev('S').mix.length !== 3) throw new Error('no quedaron 3 modos marcados');
+    if ($('mixgo').disabled) throw new Error('el botón de jugar sigue bloqueado');
+
+    W.startMix();
+    const origenes = new Set();
+    const vistas = [];
+    for (let i = 0; i < 30; i++) {
+      const et = $('gcard').querySelector('.ctype').textContent;
+      const partes = et.split('·');
+      if (partes.length < 2) throw new Error('la carta no dice de qué modo viene: ' + et);
+      origenes.add(partes[partes.length - 1].trim());
+      vistas.push($('gcard').querySelector('.ctext').textContent);
+      await avanzar(false);
+    }
+    if (origenes.size < 2) throw new Error('todas las cartas vinieron del mismo modo');
+    if (new Set(vistas).size !== vistas.length) throw new Error('el mix repitió una carta');
+    logs.push('   mix de ' + origenes.size + ' modos, 30 cartas sin repetir');
+  });
+
+  await run('bomba: enciende, hace tic-tac y explota', async () => {
+    W.go('bomba');
+    if (!$('bombcard')) throw new Error('no se dibujó la bomba');
+    W.toggleBomb();
+    if (!ev('BOMB').running) throw new Error('no encendió la mecha');
+    const cat = $('bombcat').textContent;
+    if (!cat || /Toca encender/.test(cat)) throw new Error('no salió una categoría');
+    for (let i = 0; i < 80 && ev('BOMB').running; i++) await tick();
+    if (ev('BOMB').running) throw new Error('la mecha nunca se acabó');
+    if (!/BOOM/.test($('bombcat').textContent)) throw new Error('no mostró la explosión');
+    if (!/3/.test($('bombhint').textContent)) throw new Error('no dice cuánto toma el perdedor');
+    logs.push('   categoría: ' + cat);
+    W.go('modes');
+    if (ev('BOMB').t) throw new Error('la mecha quedó corriendo al salir de la pantalla');
   });
 
   await run('marcador', () => {

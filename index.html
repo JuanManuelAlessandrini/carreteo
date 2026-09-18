@@ -137,6 +137,41 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .minibtn{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px;font-size:13px;color:var(--muted)}
 .minibtn.danger{color:var(--pink);border-color:rgba(255,61,127,.35)}
 .minibtn:active{transform:scale(.97)}
+/* ---------- premio o castigo · verdad o reto ---------- */
+.pcrow{display:flex;gap:10px;width:100%}
+.pcrow .wbtn{flex:1;text-align:center;padding:15px 8px}
+.wbtn.good{border-color:#22c55e;color:#4ade80}
+.wbtn.bad{border-color:var(--pink);color:var(--pink)}
+.answer.good{border-color:#22c55e;background:rgba(34,197,94,.12);color:#bbf7d0}
+.answer.bad{border-color:var(--pink);background:rgba(255,61,127,.12);color:#ffd4e3}
+
+/* ---------- mix ---------- */
+.mixlist{display:flex;flex-direction:column;gap:8px;padding-bottom:14px}
+.mixrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.mixrow.on{border-color:var(--violet);background:var(--surface2)}
+.mixrow .mem{font-size:21px;flex:none}
+.mixrow .mnm{flex:1;font-size:15px;font-weight:500}
+.mixrow .mct{font-size:12px;color:var(--muted)}
+.mixrow .tick{width:23px;height:23px;flex:none;border-radius:7px;border:1px solid var(--line);
+  color:transparent;font-size:13px;display:grid;place-items:center}
+.mixrow.on .tick{background:var(--violet);border-color:var(--violet);color:#fff}
+
+/* ---------- la bomba ---------- */
+#bombabox{display:flex;align-items:center;justify-content:center}
+.bombcard{width:100%;text-align:center;padding:36px 22px;border-radius:26px;
+  background:var(--surface2);border:1px solid var(--line);transition:border-color .2s}
+.bombcard.lit{border-color:#f97316;box-shadow:0 0 44px rgba(249,115,22,.26)}
+.bombcard.boom{border-color:var(--pink);background:rgba(255,61,127,.14);animation:shake .4s}
+@keyframes shake{25%{transform:translateX(-9px)}75%{transform:translateX(9px)}}
+.bombemoji{font-size:64px;line-height:1}
+.bombcard.lit .bombemoji{animation:tic .55s infinite alternate}
+@keyframes tic{to{transform:scale(1.15)}}
+.bombcat{font-family:'Anton';font-size:clamp(25px,7vw,36px);text-transform:uppercase;
+  letter-spacing:.02em;margin:15px 0 11px;color:var(--mango);line-height:1.1}
+.bombcard.boom .bombcat{color:var(--pink)}
+.bombhint{color:var(--muted);font-size:14px;line-height:1.55}
+@media (prefers-reduced-motion:reduce){.bombcard.lit .bombemoji,.bombcard.boom{animation:none}}
 
 /* ---------- marcador ---------- */
 #board .prow{justify-content:space-between}
@@ -237,6 +272,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
       <span class="pill" id="freeAll">Todo gratis ✓</span>
     </div>
     <div class="fill">
+      <div class="mgrid" id="mgridMix" style="grid-template-columns:1fr"></div>
       <div class="tag sect">Modos de cartas</div>
       <div class="mgrid" id="mgridCards"></div>
       <div class="tag sect">Juegos especiales</div>
@@ -314,6 +350,28 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
       </div>
     </div>
     <button class="btn btn-primary" onclick="drawKing()">Sacar carta 🃏</button>
+  </section>
+
+
+  <!-- MIX -->
+  <section class="screen" id="mixpick">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')">←</button>
+      <h2>Arma tu mix</h2>
+    </div>
+    <div class="fill"><div class="mixlist" id="mixlist"></div></div>
+    <button class="btn btn-primary" id="mixgo" onclick="startMix()">Elige al menos 2 modos</button>
+  </section>
+
+  <!-- LA BOMBA -->
+  <section class="screen" id="bomba">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')">←</button>
+      <h2>La bomba</h2>
+      <button class="pill" onclick="go('board')">🏆</button>
+    </div>
+    <div class="fill" id="bombabox"></div>
+    <button class="btn btn-primary" id="bombbtn" onclick="toggleBomb()">🔥 Encender la mecha</button>
   </section>
 
 </div>

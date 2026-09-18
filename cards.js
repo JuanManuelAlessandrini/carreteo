@@ -306,14 +306,23 @@ const MODES=[
 `yn|Yo nunca he llorado con una película navideña. Toma 1, corazón de pan de pascua.`,
 `r|Todos digan "¡salud y feliz navidad!" al unísono. Quien se adelante o atrase toma 1.`,
 `tr|{j}, haz de Viejito Pascuero: reparte 4 sorbos entre quienes se "portaron mal" este año.`,
-`p|{j}, un propósito de año nuevo que NO cumpliste. Confiesa o toma 3.`]}
+`p|{j}, un propósito de año nuevo que NO cumpliste. Confiesa o toma 3.`]},
+{id:'premio',nm:'Premio o castigo',em:'🎁',c:'#22c55e',ds:'Lo logras y ganas. Fallas y pagas.',lvl:2,deck:[
+`pc|{j}, di el nombre de todos los presentes en orden alfabético, sin equivocarte§Reparte 3 sorbos a quien quieras§Toma 3 sorbos`,
+`pc|{j}, aguanta 20 segundos sin parpadear mientras {j2} te hace muecas§Te salvas de la próxima carta§Toma 2 sorbos`,
+`pc|{j}, nombra 6 cosas que hay en esta pieza sin repetir, en 15 segundos§Elige quién toma 3§Toma 3 sorbos`,
+`pc|{j}, imita a {j2} hasta que alguien adivine de quién se trata§Ambos reparten 2 sorbos§Toma 2 sorbos`,
+`pc|{j}, cuenta del 30 al 1 de tres en tres sin trabarte§Inventa una regla que dure 3 rondas§Toma 3 sorbos`,
+`pc|{j}, adivina cuántos sorbos lleva {j2} con un margen de 2§{j2} toma 2§Toma 2 sorbos`]},
+{id:'vor',nm:'Verdad o reto',em:'🎲',c:'#0ea5e9',ds:'Eliges tú antes de ver la carta. No hay vuelta atrás.',lvl:2,pick:true,deck:[]}
 ];
 
 /* ---------- especiales ---------- */
 const SPECIALS=[
 {id:'rey',nm:'Cuarto rey',em:'👑',c:'#eab308',ds:'La baraja clásica, versión digital.'},
 {id:'impostor',nm:'Impostor',em:'🕵️',c:'#94a3b8',ds:'Uno miente. Encuéntrenlo.',min:3},
-{id:'ruleta',nm:'Ruleta',em:'🎡',c:'#e879f9',ds:'Gira y que decida el destino.'}
+{id:'ruleta',nm:'Ruleta',em:'🎡',c:'#e879f9',ds:'Gira y que decida el destino.'},
+{id:'bomba',nm:'La bomba',em:'💣',c:'#f97316',ds:'Pasa el celular antes de que explote.',min:3}
 ];
 
 const KING_RULES={
@@ -342,9 +351,43 @@ const IMP_WORDS={
 'Pantalla':['terror','comedia romántica','documental','anime','telenovela','superhéroes'],
 'Deportes':['fútbol','natación','ajedrez','boxeo','tenis','escalada']};
 
+/* ---------- Verdad o reto ----------
+   10 cartas por nivel en cada lista: [1] suave, [2] medio, [3] picante.
+-------------------------------------*/
+const TRUTH_DARE={
+truths:[
+`[1]p|{j}, ¿cuál es la comida que jamás probarías, ni por plata? Responde o toma 2.`,
+`[1]p|{j}, ¿qué canción te sabes entera y te da vergüenza admitir? Cántala o toma 2.`,
+`[2]p|{j}, ¿cuál es la mentira más grande que has dicho para salir de un compromiso? O toma 3.`,
+`[2]p|{j}, ¿a quién de acá le pedirías plata prestada sin dudar? Di por qué o toma 2.`,
+`[3]p|{j}, ¿cuál es el mensaje que más te arrepientes de haber mandado? Cuéntalo o toma 4.`,
+`[3]p|{j}, ¿alguna vez te gustó alguien que no debías? Un sí o un no basta, o toma 3.`],
+dares:[
+`[1]r|{j}, habla como locutor de radio hasta tu próximo turno o toma 2.`,
+`[1]r|{j}, hazle un cumplido sincero a cada persona del grupo o toma 3.`,
+`[2]r|{j}, deja que {j2} elija tu foto de perfil por una hora, o toma 3.`,
+`[2]r|{j}, llama a alguien de tu familia y dile que lo quieres, sin explicar por qué. O toma 4.`,
+`[3]r|{j}, muéstrale al grupo la última foto que mandaste por WhatsApp, o toma 4.`,
+`[3]r|{j}, dile a {j2} qué es lo primero que pensaste cuando lo conociste. Sin filtro o toma 3.`]
+};
+
+/* ---------- La bomba ----------
+   Categorías para ir diciendo ejemplos por turnos contra el reloj.
+--------------------------------*/
+const BOMB_CATS=[
+`Marcas de auto`,`Cosas que hay en una cocina`,`Países de Sudamérica`,
+`Excusas para llegar tarde`,`Comunas de Santiago`,`Frutas`,
+`Cosas que caben en un bolsillo`,`Deportes olímpicos`,`Animales con cuatro patas`,
+`Cosas que se rompen fácil`,`Programas de televisión chilenos`,`Cosas frías`];
+
 const WHEEL_DARES=[`toma 2 sorbos`,`reparte 3 sorbos`,`cuenta un chiste o toma 2`,`elige quién toma 2`,`todos toman 1 menos tú`,`imita a alguien del grupo`,`di un cumplido a cada persona`,`toma 1 y gira de nuevo`,`inventa una regla por 2 rondas`,`te salvaste: nada esta vez`];
+
+/* El mazo de Verdad o reto es la suma de sus dos listas: así los conteos y
+   los tests lo ven como un modo más, pero el juego las reparte por separado. */
+MODES.find(m=>m.id==='vor').deck=TRUTH_DARE.truths.concat(TRUTH_DARE.dares);
 
 /* ---------- export para los tests (en el navegador esto se ignora) ---------- */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TYPES, MODES, SPECIALS, KING_RULES, KING_LAST, IMP_WORDS, WHEEL_DARES };
+  module.exports = { TYPES, MODES, SPECIALS, KING_RULES, KING_LAST,
+                     IMP_WORDS, WHEEL_DARES, TRUTH_DARE, BOMB_CATS };
 }
