@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#17131f">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -12,7 +12,11 @@
 <meta name="description" content="Juego de fiesta para adultos: cartas originales, sin anuncios y sin internet.">
 <title>Carreteo · Juego de fiesta 100% gratis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- no bloqueante: con señal débil el navegador espera este CSS de otro origen antes de
+     pintar (pantalla negra) y el service worker no lo cachea por ser cross-origin -->
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
 <style>
 :root{
   --bg:#17131f; --surface:#221c30; --surface2:#2c2440;
@@ -33,7 +37,11 @@ body{
 h1,h2,.display{font-family:'Anton',Impact,sans-serif;letter-spacing:.02em;text-transform:uppercase;font-weight:400}
 button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:none}
 #app{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;position:relative}
-.screen{display:none;flex-direction:column;height:100%;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+.screen{display:none;flex-direction:column;height:100%;padding:18px;
+  /* fallback primero: si el navegador no entiende env(), calc() queda inválido
+     y el motor conserva este padding en vez de dejarlo todo en 0 */
+  padding-top:max(18px, calc(18px + env(safe-area-inset-top)));
+  padding-bottom:max(18px, calc(18px + env(safe-area-inset-bottom)))}
 .screen.on{display:flex}
 .fill{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
 
@@ -41,7 +49,9 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .topbar{display:flex;align-items:center;gap:10px;padding-bottom:14px}
 .topbar .back{width:42px;height:42px;border-radius:14px;background:var(--surface);font-size:18px;flex:none;border:1px solid var(--line)}
 .topbar h2{font-size:22px;flex:1;line-height:1}
-.pill{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--muted)}
+.pill{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--muted);position:relative}
+/* el pill visible mide ~33px de alto: se agranda el área táctil sin agrandar el diseño */
+.pill::after{content:"";position:absolute;left:0;top:50%;width:100%;height:44px;transform:translateY(-50%)}
 .btn{display:block;width:100%;padding:17px;border-radius:var(--radius);font-weight:700;font-size:17px;text-align:center;transition:transform .08s}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:linear-gradient(135deg,var(--pink),#ff6ea9);color:#fff;box-shadow:0 8px 24px rgba(255,61,127,.35)}
@@ -50,7 +60,10 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 
 /* ---------- age gate ---------- */
 #gate{position:fixed;inset:0;background:rgba(13,10,20,.92);backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px}
-#gate .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:28px 22px;max-width:380px;text-align:center}
+#gate .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:28px 22px;max-width:380px;text-align:center;
+  /* en landscape angosto (~380px de alto) el contenido no entra: que scrollee
+     en vez de cortar los botones de "Entrar" */
+  max-height:100%;overflow-y:auto}
 #gate h2{font-size:30px;margin-bottom:10px}
 #gate p{color:var(--muted);font-size:14px;line-height:1.55;margin-bottom:18px}
 
@@ -62,6 +75,8 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .homebtns{display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px;margin:0 auto}
 .switchrow{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:22px;color:var(--muted);font-size:14px}
 .switch{width:52px;height:30px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;position:relative;transition:background .2s;flex:none}
+/* ::after ya dibuja la perilla: el área táctil se agranda con ::before, invisible */
+.switch::before{content:"";position:absolute;left:0;top:50%;width:100%;height:44px;transform:translateY(-50%)}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:.2s}
 .switch.on{background:var(--mango)}
 .switch.on::after{left:26px;background:#17131f}
@@ -76,7 +91,9 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .prow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px}
 .pav{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:700;color:#17131f;font-size:16px;flex:none}
 .prow .nm{flex:1;font-weight:500;font-size:16px}
-.prow .del{color:var(--muted);font-size:20px;padding:6px}
+.prow .del{color:var(--muted);font-size:20px;padding:6px;position:relative}
+/* ícono chico (~32px): se agranda solo el área táctil a 44px, no el diseño */
+.prow .del::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
 .emptyhint{color:var(--muted);text-align:center;padding:34px 20px;font-size:14px;line-height:1.6}
 
 /* ---------- modes grid ---------- */
@@ -87,7 +104,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .mtile .em{font-size:26px}
 .mtile .nm{font-family:'Anton';font-size:17px;letter-spacing:.03em;text-transform:uppercase;line-height:1.05;margin-top:8px;position:relative}
 .mtile .ds{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;position:relative}
-.mtile .free{position:absolute;top:10px;right:10px;font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--mango)}
+.mtile .free{position:absolute;top:10px;right:10px;font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--mango)}
 .sect{margin:16px 0 10px}
 
 /* ---------- game ---------- */
@@ -127,12 +144,15 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .gactions .btn{flex:1;padding:15px}
 .skipbtn{color:var(--muted)}
 .donebtn{background:var(--accent);color:#17131f;font-weight:800}
-.hintswipe{text-align:center;color:var(--muted);font-size:11px;margin-top:8px;opacity:.7}
+/* opacity subida de .7 a .85: con .7 el contraste caía a ~4.1:1, bajo el 4.5:1 que exige AA */
+.hintswipe{text-align:center;color:var(--muted);font-size:11px;margin-top:8px;opacity:.85}
 
 /* ---------- intensidad ---------- */
 .chiprow{display:flex;justify-content:center;margin-top:20px}
 .chips{display:inline-flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px}
-.chip{border-radius:999px;padding:9px 14px;font-size:13px;font-weight:500;color:var(--muted);transition:background .16s,color .16s}
+.chip{border-radius:999px;padding:9px 14px;font-size:13px;font-weight:500;color:var(--muted);transition:background .16s,color .16s;position:relative}
+/* ~34px de alto visible: se agranda el área táctil a 44px sin tocar el tamaño del chip */
+.chip::after{content:"";position:absolute;left:0;top:50%;width:100%;height:44px;transform:translateY(-50%)}
 .chip.on{background:var(--violet);color:#fff}
 .timerbig.urgent{color:var(--pink);animation:pulse .5s infinite alternate}
 @keyframes pulse{to{transform:scale(1.12)}}
@@ -183,7 +203,9 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 #board .prow{justify-content:space-between}
 .sipnum{font-family:'Anton';font-size:22px;color:var(--mango);min-width:34px;text-align:center}
 .sipbtns{display:flex;gap:6px}
-.sipbtns button{width:36px;height:36px;border-radius:11px;background:var(--surface2);border:1px solid var(--line);font-size:17px}
+.sipbtns button{width:36px;height:36px;border-radius:11px;background:var(--surface2);border:1px solid var(--line);font-size:17px;position:relative}
+/* 36px visibles: se agranda el área táctil a 44px sin agrandar el botón */
+.sipbtns button::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
 .crown{font-size:16px}
 
 /* ---------- resumen de la noche ---------- */
@@ -232,7 +254,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 </style>
 </head>
 <body>
-<div id="gate">
+<div id="gate" role="dialog" aria-modal="true">
   <div class="card">
     <div style="font-size:44px;margin-bottom:6px">🍹</div>
     <h2>Solo para +18</h2>
@@ -263,12 +285,12 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
       </div>
       <div class="switchrow">
         <span>🍺 Con alcohol</span>
-        <div class="switch" id="alcoSwitch" onclick="toggleAlcohol()"></div>
+        <div class="switch" id="alcoSwitch" onclick="toggleAlcohol()" role="switch" aria-checked="false" aria-label="Alternar modo sin alcohol" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}"></div>
         <span>🧃 Sin alcohol</span>
       </div>
       <div class="switchrow" style="margin-top:12px">
         <span>🔇</span>
-        <div class="switch" id="sndSwitch" onclick="toggleSound()"></div>
+        <div class="switch" id="sndSwitch" onclick="toggleSound()" role="switch" aria-checked="true" aria-label="Alternar sonido" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}"></div>
         <span>🔊 Sonido</span>
       </div>
       <div class="footnote" id="foot">+380 cartas 100% originales · 22 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
@@ -278,13 +300,13 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- PLAYERS -->
   <section class="screen" id="players">
     <div class="topbar">
-      <button class="back" onclick="go('home')">←</button>
+      <button class="back" onclick="go('home')" aria-label="Volver al inicio">←</button>
       <h2>¿Quiénes juegan?</h2>
       <span class="pill" id="pcount">0</span>
     </div>
     <div class="addrow">
-      <input id="pname" type="text" placeholder="Nombre del jugador" maxlength="16" enterkeyhint="done">
-      <button onclick="addPlayer()">+</button>
+      <input id="pname" type="text" placeholder="Nombre del jugador" aria-label="Nombre del jugador" maxlength="16" enterkeyhint="done">
+      <button onclick="addPlayer()" aria-label="Agregar jugador">+</button>
     </div>
     <div class="fill">
       <div class="plist" id="plist"></div>
@@ -300,7 +322,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- MODES -->
   <section class="screen" id="modes">
     <div class="topbar">
-      <button class="back" onclick="go('players')">←</button>
+      <button class="back" onclick="go('players')" aria-label="Volver a jugadores">←</button>
       <h2>Elige el modo</h2>
       <span class="pill" id="freeAll">Todo gratis ✓</span>
     </div>
@@ -318,9 +340,9 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- GAME (cards) -->
   <section class="screen" id="game">
     <div class="gtop">
-      <button class="back" onclick="endGame()">←</button>
+      <button class="back" onclick="endGame()" aria-label="Salir del juego">←</button>
       <div class="mname" id="gmode"></div>
-      <button class="pill" onclick="go('board')">🏆</button>
+      <button class="pill" onclick="go('board')" aria-label="Ver marcador de sorbos">🏆</button>
       <span class="cnt" id="gcount"></span>
     </div>
     <div class="rulesbar" id="rulesbar"></div>
@@ -336,7 +358,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- BOARD -->
   <section class="screen" id="board">
     <div class="topbar">
-      <button class="back" onclick="go(S.prev||'home')">←</button>
+      <button class="back" onclick="go(S.prev||'home')" aria-label="Volver">←</button>
       <h2>Marcador</h2>
       <button class="pill" onclick="resetSips()">Reiniciar</button>
     </div>
@@ -350,7 +372,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- RESUMEN -->
   <section class="screen" id="summary">
     <div class="topbar">
-      <button class="back" onclick="go('board')">←</button>
+      <button class="back" onclick="go('board')" aria-label="Volver al marcador">←</button>
       <h2>Resumen de la noche</h2>
     </div>
     <div class="fill"><div id="sumbox"></div></div>
@@ -363,7 +385,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- RULETA -->
   <section class="screen" id="ruleta">
     <div class="topbar">
-      <button class="back" onclick="go('modes')">←</button>
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
       <h2>Ruleta</h2>
     </div>
     <div class="fill" id="wheelbox">
@@ -377,7 +399,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- IMPOSTOR -->
   <section class="screen" id="impostor">
     <div class="topbar">
-      <button class="back" onclick="go('modes')">←</button>
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
       <h2>El impostor</h2>
     </div>
     <div class="fill" id="impbox"></div>
@@ -386,7 +408,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- CUARTO REY -->
   <section class="screen" id="rey">
     <div class="topbar">
-      <button class="back" onclick="go('modes')">←</button>
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
       <h2>Cuarto rey</h2>
       <span class="pill" id="reyleft"></span>
     </div>
@@ -403,7 +425,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- MIX -->
   <section class="screen" id="mixpick">
     <div class="topbar">
-      <button class="back" onclick="go('modes')">←</button>
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
       <h2>Arma tu mix</h2>
     </div>
     <div class="fill"><div class="mixlist" id="mixlist"></div></div>
@@ -413,16 +435,16 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
   <!-- LA BOMBA -->
   <section class="screen" id="bomba">
     <div class="topbar">
-      <button class="back" onclick="go('modes')">←</button>
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
       <h2>La bomba</h2>
-      <button class="pill" onclick="go('board')">🏆</button>
+      <button class="pill" onclick="go('board')" aria-label="Ver marcador de sorbos">🏆</button>
     </div>
     <div class="fill" id="bombabox"></div>
     <button class="btn btn-primary" id="bombbtn" onclick="toggleBomb()">🔥 Encender la mecha</button>
   </section>
 
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
 <script src="cards.js"></script>

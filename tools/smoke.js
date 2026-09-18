@@ -308,6 +308,46 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (ev('BOMB').t) throw new Error('la mecha quedó corriendo al salir de la pantalla');
   });
 
+  await run('el atras del marcador no queda atrapado en el resumen', () => {
+    // board y summary se visitan una desde la otra: si alguna se guardara
+    // como pantalla de origen, el atras rebotaria entre las dos y la unica
+    // salida seria "Partida nueva", que borra el marcador.
+    W.go('home');
+    W.go('board');        // 🏆 desde el inicio
+    W.go('summary');      // "Terminar la noche"
+    W.go('board');        // ← del resumen
+    const destino = ev('S').prev || 'home';
+    if (destino !== 'home') {
+      throw new Error('el atras del marcador lleva a "' + destino + '" en vez de home');
+    }
+    logs.push('   atras desde el marcador -> ' + destino);
+  });
+
+  await run('ningun emoji quedo como codigo en el codigo fuente', () => {
+    // La U mayuscula no forma un escape valido en JS: "\U0001F381" se
+    // queda como el texto literal U0001F381 y sale asi en pantalla.
+    const fs2 = require('fs'), path2 = require('path');
+    const roto = /\\U[0-9A-Fa-f]{8}/g;
+    const malos = [];
+    ['app.js', 'cards.js', 'engine.js', 'index.html', 'sw.js'].forEach(f => {
+      const m = fs2.readFileSync(path2.join(ROOT, f), 'utf8').match(roto);
+      if (m) malos.push(f + ': ' + [...new Set(m)].join(' '));
+    });
+    if (malos.length) throw new Error(malos.join(' | '));
+  });
+
+  await run('ninguna pantalla muestra codigos de emoji crudos', async () => {
+    const sucias = [];
+    for (const id of ['home', 'players', 'modes', 'game', 'board', 'summary',
+                      'ruleta', 'impostor', 'rey', 'mixpick', 'bomba']) {
+      if (!$(id)) continue;
+      W.go(id); await tick();
+      if (/U000[0-9A-Fa-f]{5}/.test($(id).textContent)) sucias.push(id);
+    }
+    W.go('modes');   // apaga la mecha de la bomba
+    if (sucias.length) throw new Error('pantallas con codigos crudos: ' + sucias.join(', '));
+  });
+
   await run('marcador', () => {
     W.go('board');
     if (!$('blist').children.length) throw new Error('marcador vacío');

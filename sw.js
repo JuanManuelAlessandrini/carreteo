@@ -1,5 +1,12 @@
-// Service Worker para Carreteo
-// Estrategia cache-first: busca en cache primero, luego en red
+// Service worker de Carreteo.
+//
+// Estrategia: cache-first con versión atómica. Todos los archivos de una
+// versión se guardan juntos en un cache con nombre propio, y una carga sirve
+// siempre archivos de la misma versión. Nunca se revalida archivo por
+// archivo: eso podía dejar un index.html nuevo pidiéndole funciones a un
+// app.js viejo.
+//
+// Para publicar una versión nueva basta subir el número de CACHE.
 
 const CACHE = 'carreteo-v2.0.0';
 const ASSETS = [
@@ -14,102 +21,69 @@ const ASSETS = [
   './icons/maskable-512.png'
 ];
 
-// Instalar: precachea los archivos esenciales
+// Instalar: baja y guarda la versión completa.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => {
-      // Intenta agregar todos los assets, pero no falla si alguno no existe
-      return Promise.all(
-        ASSETS.map((url) =>
-          cache.add(url).catch(() => {
-            console.warn(`No se pudo cachear: ${url}`);
-          })
-        )
-      );
-    }).then(() => {
-      // Activa este SW inmediatamente sin esperar a cerrar tabs
-      self.skipWaiting();
-    })
+    caches.open(CACHE).then((cache) => Promise.all(
+      ASSETS.map((url) =>
+        // cache:'reload' saltea el cache HTTP del navegador. Sin esto,
+        // GitHub Pages sirve con max-age=600 y al subir la versión se
+        // podrían precachear archivos de hasta 10 minutos atrás.
+        cache.add(new Request(url, { cache: 'reload' })).catch(() => {
+          console.warn('No se pudo cachear: ' + url);
+        })
+      )
+    ))
   );
+  // A propósito no se llama skipWaiting() aquí: el service worker nuevo
+  // espera. La app muestra un aviso y recién al tocarlo manda SKIP_WAITING
+  // y recarga, así la versión cambia entera y no en medio de una partida.
 });
 
-// Activar: limpia caches viejos
+// Activar: borra las versiones anteriores.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      // Borra todo cache que empiece con 'carreteo-' pero no sea el actual
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName.startsWith('carreteo-') && cacheName !== CACHE) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => {
-      // Toma control de todos los clientes sin esperar
-      self.clients.claim();
-    })
+    caches.keys()
+      .then((nombres) => Promise.all(
+        nombres
+          .filter((n) => n.startsWith('carreteo-') && n !== CACHE)
+          .map((n) => caches.delete(n))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch: estrategia cache-first con revalidación en bg
+// Fetch: cache primero, red como respaldo.
 self.addEventListener('fetch', (event) => {
-  // Solo intercepta GET del mismo origen
-  if (event.request.method !== 'GET' || !isSameOrigin(event.request.url)) {
-    return;
-  }
+  if (event.request.method !== 'GET' || !esMismoOrigen(event.request.url)) return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // Si está en cache, devuelve y revalida en segundo plano
-      if (cachedResponse) {
-        revalidateInBackground(event.request);
-        return cachedResponse;
-      }
+    caches.match(event.request).then((enCache) => {
+      if (enCache) return enCache;
 
-      // Si no está en cache, va a la red
-      return fetch(event.request).then((response) => {
-        // Guarda una copia si la respuesta es válida
-        if (response && response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+      return fetch(event.request).then((res) => {
+        if (res && res.status === 200) {
+          const copia = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copia));
         }
-        return response;
+        return res;
       }).catch(() => {
-        // Si la red falla y es una navegación, devuelve el índice en cache
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
+        // Sin red: cualquier navegación cae al index cacheado.
+        if (event.request.mode === 'navigate') return caches.match('./index.html');
       });
     })
   );
 });
 
-// Revalida en bg: actualiza el cache si hay respuesta nueva
-function revalidateInBackground(request) {
-  fetch(request).then((response) => {
-    if (response && response.status === 200) {
-      const responseToCache = response.clone();
-      caches.open(CACHE).then((cache) => {
-        cache.put(request, responseToCache);
-      });
-    }
-  }).catch(() => {
-    // Silenciosamente falla si la red no responde
-  });
-}
-
-// Verifica que la URL sea del mismo origen
-function isSameOrigin(url) {
-  const requestUrl = new URL(url);
-  return requestUrl.origin === self.location.origin;
-}
-
-// Escucha mensajes desde la app para saltar a nueva versión
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+function esMismoOrigen(url) {
+  try {
+    return new URL(url).origin === self.location.origin;
+  } catch (e) {
+    return false;
   }
+}
+
+// La app pide el cambio de versión cuando el usuario toca el aviso.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });

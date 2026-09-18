@@ -25,6 +25,19 @@ const S={
 const AVCOLORS=['#ff3d7f','#ffb24d','#8b6cff','#59c2ff','#34d399','#f472b6','#facc15','#7dd3fc'];
 const LVL_NM={1:'Suave',2:'Medio',3:'Picante'};
 
+/* Los switch se declaran con role="switch", asi que el estado visual no
+   alcanza: un lector de pantalla lee aria-checked, no la clase. */
+function setSwitch(id,v){
+  const e=$(id);
+  if(!e) return;
+  e.classList.toggle('on',!!v);
+  e.setAttribute('aria-checked',v?'true':'false');
+}
+
+/* Primera letra del nombre. Array.from respeta los emoji: con n[0] se
+   parte el par surrogate y sale el rombo de caracter invalido. */
+function inicial(n){ return (Array.from(String(n||'?'))[0]||'?').toUpperCase() }
+
 /* ---------- memoria ----------
    Jugadores, marcador y preferencias sobreviven al cierre.
    El historial de cartas no: cada fiesta parte con el mazo limpio.
@@ -46,7 +59,9 @@ function load(){
     if(Array.isArray(d.players)){
       S.players=d.players.filter(p=>p&&p.n).map((p,i)=>({
         n:String(p.n).slice(0,16), sips:+p.sips||0, done:+p.done||0, skip:+p.skip||0,
-        c:p.c||AVCOLORS[i%AVCOLORS.length]
+        // el color entra a un atributo style: si no se valida, un
+        // localStorage manipulado puede inyectar atributos
+        c:/^#[0-9a-f]{6}$/i.test(p.c||'')?p.c:AVCOLORS[i%AVCOLORS.length]
       }));
     }
     S.noAlcohol=!!d.noAlcohol;
@@ -55,6 +70,9 @@ function load(){
     S.mix=Array.isArray(d.mix)?d.mix:[];
     S.startedAt=+d.startedAt||0;
     S.totalDrawn=+d.totalDrawn||0;
+    // Si paso medio dia, es otra fiesta: sin esto el resumen de la noche
+    // siguiente dice "168 h de carrete" con las cartas acumuladas.
+    if(S.startedAt&&Date.now()-S.startedAt>8*3600*1000){ S.startedAt=0;S.totalDrawn=0 }
   }catch(e){/* datos corruptos: se empieza de cero */}
 }
 
@@ -100,7 +118,9 @@ function vib(p){ try{ if(S.sound&&navigator.vibrate) navigator.vibrate(p) }catch
 /* ---------- navegación ---------- */
 function go(id){
   const cur=document.querySelector('.screen.on');
-  if(cur&&cur.id!=='board') S.prev=cur.id;
+  // board y summary son pantallas de paso: si se guardaran como origen,
+  // el boton atras quedaria rebotando entre las dos sin salida.
+  if(cur&&cur.id!=='board'&&cur.id!=='summary') S.prev=cur.id;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   $(id).classList.add('on');
   if(id==='players') renderPlayers();
@@ -110,15 +130,27 @@ function go(id){
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
-  if(id==='bomba') initBomb(); else clearBomb();
+  // Salir de la pantalla apaga la mecha a propósito: si siguiera corriendo,
+  // explotaría en una pantalla que nadie está mirando. Se avisa para que no
+  // parezca que se perdió sola.
+  if(id==='bomba') initBomb();
+  else { if(BOMB.running) toast('Mecha apagada al salir'); clearBomb() }
 }
 function closeGate(){$('gate').style.display='none'}
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._x);t._x=setTimeout(()=>t.classList.remove('show'),2200)}
+function toast(m){
+  const t=$('toast');
+  // el aviso de version nueva deja el toast clickeable y con onclick.
+  // Si no se limpia aqui, queda invisible pero recargando la pagina
+  // al tocarlo, justo encima de los botones del juego.
+  t.onclick=null;t.style.pointerEvents='none';
+  t.textContent=m;t.classList.add('show');
+  clearTimeout(t._x);t._x=setTimeout(()=>t.classList.remove('show'),2200);
+}
 
 /* ---------- preferencias ---------- */
 function setNoAlcohol(v){
   S.noAlcohol=v;
-  $('alcoSwitch').classList.toggle('on',v);
+  setSwitch('alcoSwitch',v);
   save();
   toast(v?'Modo sin alcohol: sorbos → puntos, shots → prendas 🧃':'Modo con alcohol activado 🍺 Con moderación.');
 }
@@ -127,7 +159,7 @@ function setIntensity(l){
   toast(`Intensidad: ${LVL_NM[l]} ${l===1?'😇':l===2?'😏':'🌶️'}`);
 }
 function setSound(v){
-  S.sound=v; $('sndSwitch').classList.toggle('on',v); save();
+  S.sound=v; setSwitch('sndSwitch',v); save();
   if(v){ sfx.tap(); vib(15) }
 }
 function toggleAlcohol(){ setNoAlcohol(!S.noAlcohol) }
@@ -167,7 +199,7 @@ function renderPlayers(){
   const L=$('plist');L.innerHTML='';
   S.players.forEach((p,i)=>{
     const d=document.createElement('div');d.className='prow';
-    d.innerHTML=`<div class="pav" style="background:${p.c}">${p.n[0].toUpperCase()}</div><div class="nm">${esc(p.n)}</div><button class="del" onclick="delPlayer(${i})">✕</button>`;
+    d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div><div class="nm">${esc(p.n)}</div><button class="del" onclick="delPlayer(${i})" aria-label="Eliminar a ${esc(p.n)}">✕</button>`;
     L.appendChild(d);
   });
   $('phint').style.display=S.players.length?'none':'block';
@@ -215,6 +247,7 @@ function deckFor(m){
 }
 
 function startMode(m){
+  clearAnim();
   if(m.min&&S.players.length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
   S.mode=m;S.rules=[];S.drawn=0;
   if(!S.startedAt) S.startedAt=Date.now();
@@ -243,6 +276,12 @@ function otherThan(p){
   return rnd(S.players.filter(x=>x!==p));
 }
 let curCard=null,curP1=null,curP2=null;
+/* La animacion de salida dura 200 ms y recien ahi se dibuja la carta
+   siguiente. Sin este candado, dos taps seguidos gastan dos cartas (y
+   suman dos veces al marcador); y si se sale de la partida en el medio,
+   el timeout dibuja una carta en una pantalla que ya no se ve. */
+let avanzando=false,animT=null;
+function clearAnim(){ if(animT){clearTimeout(animT);animT=null} avanzando=false }
 function showCard(raw,forceP1){
   clearTimer();
   if(S.mode&&!S.mode.pick) S.recent[S.mode.id]=E.pushRecent(S.recent[S.mode.id],raw,E.RECENT_CAP);
@@ -264,9 +303,11 @@ function showCard(raw,forceP1){
   let ans=null,txt=c.x;
   if(c.k==='p'&&txt.includes('§')){[txt,ans]=txt.split('§')}
   if(c.k==='pc'){txt=c.parts[0]}
+  // el reemplazo va como funcion: un nombre con $' o $& se interpretaria
+  // como patron y duplicaria el texto de la carta
   const html=esc(adapt(txt))
-    .replace(/\{j2\}/g,p2?`<span class="pj">${esc(p2.n)}</span>`:'alguien')
-    .replace(/\{j\}/g,p1?`<span class="pj">${esc(p1.n)}</span>`:'alguien');
+    .replace(/\{j2\}/g,()=>p2?`<span class="pj">${esc(p2.n)}</span>`:'alguien')
+    .replace(/\{j\}/g,()=>p1?`<span class="pj">${esc(p1.n)}</span>`:'alguien');
   const card=$('gcard');
   card.classList.remove('out');
   card.style.animation='none';void card.offsetWidth;card.style.animation='';
@@ -304,16 +345,20 @@ function renderQuick(txt,c,p1,p2){
   const mk=(p)=>{const b=document.createElement('button');b.className='qbtn';
     b.innerHTML=`+${n} <b>${esc(p.n)}</b>`;
     b.onclick=()=>{p.sips+=n;save();sfx.tap();toast(`${p.n}: ${p.sips} ${S.noAlcohol?'puntos':'sorbos'} 🏆`)};q.appendChild(b)};
-  if(txt.includes('{j}'))mk(p1);
-  if(txt.includes('{j2}'))mk(p2);
+  if(txt.includes('{j}')&&p1)mk(p1);
+  if(txt.includes('{j2}')&&p2)mk(p2);
   const all=document.createElement('button');all.className='qbtn';all.innerHTML=`+1 <b>todos</b>`;
   all.onclick=()=>{S.players.forEach(p=>p.sips++);save();sfx.tap();toast('Todos +1 🍻')};q.appendChild(all);
 }
 function nextCard(skipped){
+  if(avanzando) return;
+  avanzando=true;
   const card=$('gcard');
   card.classList.add('out');
   // quién se la jugó y quién se arrugó, para el resumen de la noche
-  if(curP1){ if(skipped) curP1.skip=(curP1.skip||0)+1; else curP1.done=(curP1.done||0)+1; save() }
+  // solo cuenta si habia carta: en la pantalla de "verdad o reto" todavia
+  // no se eligio nada y no corresponde anotar nada a nadie
+  if(curP1&&curCard){ if(skipped) curP1.skip=(curP1.skip||0)+1; else curP1.done=(curP1.done||0)+1; save() }
   // reglas activas: descontar
   S.rules.forEach(r=>r.left--);
   const expired=S.rules.filter(r=>r.left<=0);
@@ -321,10 +366,11 @@ function nextCard(skipped){
   if(expired.length)toast('Regla terminada: '+expired[0].txt);
   // si la actual era regla y no la saltaron, activarla
   if(curCard&&curCard.k==='rg'&&!skipped){
-    let t=adapt(curCard.x).replace(/\{j2\}/g,curP2?curP2.n:'alguien').replace(/\{j\}/g,curP1?curP1.n:'alguien');
+    let t=adapt(curCard.x).replace(/\{j2\}/g,()=>curP2?curP2.n:'alguien').replace(/\{j\}/g,()=>curP1?curP1.n:'alguien');
     S.rules.push({txt:t,left:curCard.n||3});
   }
-  setTimeout(()=>{
+  animT=setTimeout(()=>{
+    animT=null;avanzando=false;
     if(S.mode&&S.mode.pick){ showPick(); return }   // vuelve a "verdad o reto"
     S.idx++;
     if(S.idx>=S.deck.length){
@@ -344,7 +390,7 @@ function renderRules(){
     b.appendChild(c);
   });
 }
-function endGame(){clearTimer();go('modes')}
+function endGame(){clearTimer();clearAnim();go('modes')}
 
 /* ---------- timer ---------- */
 function clearTimer(){if(S.timer){clearInterval(S.timer);S.timer=null}}
@@ -366,11 +412,24 @@ function runTimer(sec,btn,w){
 }
 
 /* ---------- swipe ---------- */
-let tx=0;
-document.addEventListener('touchstart',e=>{if($('game').classList.contains('on'))tx=e.touches[0].clientX},{passive:true});
-document.addEventListener('touchend',e=>{
+/* La barra de reglas scrollea horizontal y una carta larga scrollea
+   vertical. Sin filtrar, arrastrarlas para leerlas saltaba la carta y la
+   contaba como arrugada. Se exige un gesto claramente horizontal y se
+   ignoran las zonas que se manejan solas. */
+let tx=0,ty=0,swipeOk=false;
+document.addEventListener('touchstart',e=>{
+  swipeOk=false;
   if(!$('game').classList.contains('on'))return;
+  const t=e.target;
+  if(t&&t.closest&&t.closest('.rulesbar,#quickadd,#cwidget,button'))return;
+  swipeOk=true;tx=e.touches[0].clientX;ty=e.touches[0].clientY;
+},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(!swipeOk||!$('game').classList.contains('on'))return;
+  swipeOk=false;
   const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dy)>40||Math.abs(dy)>=Math.abs(dx))return;   // era un scroll
   if(dx<-60)nextCard(false); else if(dx>60)nextCard(true);
 },{passive:true});
 
@@ -381,10 +440,10 @@ function renderBoard(){
   const max=sorted.length?sorted[0].sips:0;
   sorted.forEach(p=>{
     const d=document.createElement('div');d.className='prow';
-    d.innerHTML=`<div class="pav" style="background:${p.c}">${p.n[0].toUpperCase()}</div>
+    d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div>
       <div class="nm">${esc(p.n)} ${p.sips===max&&max>0?'<span class="crown">👑</span>':''}</div>
       <div class="sipnum">${p.sips}</div>
-      <div class="sipbtns"><button data-a="-1">−</button><button data-a="1">＋</button></div>`;
+      <div class="sipbtns"><button data-a="-1" aria-label="Restarle uno a ${esc(p.n)}">−</button><button data-a="1" aria-label="Sumarle uno a ${esc(p.n)}">＋</button></div>`;
     d.querySelectorAll('.sipbtns button').forEach(b=>b.onclick=()=>{p.sips=Math.max(0,p.sips+parseInt(b.dataset.a));renderBoard();save();sfx.tap()});
     L.appendChild(d);
   });
@@ -416,7 +475,7 @@ function renderSummary(){
   if(podio.length){
     html+=`<div class="podium">${podio.map((p,i)=>`
       <div class="podspot p${i+1}">
-        <div class="podav" style="background:${p.c}">${esc(p.n[0].toUpperCase())}</div>
+        <div class="podav" style="background:${p.c}">${esc(inicial(p.n))}</div>
         <div class="podnm">${esc(p.n)}</div>
         <div class="podn">${p.sips||0}</div>
       </div>`).join('')}</div>`;
@@ -425,7 +484,7 @@ function renderSummary(){
   if(resto.length){
     html+=`<div class="sumlist">${resto.map((p,i)=>`
       <div class="sumrow"><span class="sumpos">${i+4}</span>
-        <div class="pav" style="background:${p.c}">${esc(p.n[0].toUpperCase())}</div>
+        <div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div>
         <div class="nm">${esc(p.n)}</div><div class="sipnum">${p.sips||0}</div></div>`).join('')}</div>`;
   }
   if(s.brave){
@@ -478,7 +537,7 @@ async function shareSummary(){
     s.ranking.slice(0,6).forEach((p,i)=>{
       cx.fillStyle=p.c;roundRect(cx,90,y,900,rowH-18,22);cx.fill();
       cx.fillStyle='#17131f';cx.font='700 38px Space Grotesk, sans-serif';cx.textAlign='center';
-      cx.fillText((p.n[0]||'?').toUpperCase(),150,y+(rowH-18)/2+14);
+      cx.fillText(inicial(p.n),150,y+(rowH-18)/2+14);
       cx.textAlign='left';cx.font='700 34px Space Grotesk, sans-serif';
       const nm=p.n.length>17?p.n.slice(0,16)+'…':p.n;
       cx.fillText(`${i+1}. ${nm}`,210,y+(rowH-18)/2+12);
@@ -507,8 +566,15 @@ async function shareSummary(){
     if(!blob) throw new Error('sin blob');
     const file=new File([blob],'carreteo.png',{type:'image/png'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:'Carreteo',text:'Resumen de la noche 🎉'});
-      return;
+      try{
+        await navigator.share({files:[file],title:'Carreteo',text:'Resumen de la noche 🎉'});
+        return;
+      }catch(err){
+        // cerrar el menu a proposito no es un error
+        if(err&&err.name==='AbortError') return;
+        // iOS puede rechazar el share si el canvas se demoro: la imagen
+        // ya existe, asi que se descarga en vez de decir que fallo
+      }
     }
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download='carreteo.png';
@@ -653,16 +719,16 @@ function renderPremio(c,w,p1){
       row.remove();
       const d=document.createElement('div');
       d.className='answer '+(gana?'good':'bad');
-      d.textContent=(gana?'\U0001F381 ':'\U0001F480 ')+adapt(texto);
+      d.textContent=(gana?'🎁 ':'💀 ')+adapt(texto);
       w.appendChild(d);
       if(gana){
         sfx.win(); vib([30,40,70]);
-        toast('¡Lo logró! \U0001F389');
+        toast('¡Lo logró! 🎉');
       }else{
         const n=E.sipsInText(adapt(castigo));
         if(p1){p1.sips+=n;save()}
         sfx.bad(); vib(170);
-        toast(p1?`${p1.n}: +${n} ${S.noAlcohol?'puntos':'sorbos'} \U0001F480`:'Castigo aplicado \U0001F480');
+        toast(p1?`${p1.n}: +${n} ${S.noAlcohol?'puntos':'sorbos'} 💀`:'Castigo aplicado 💀');
       }
     };
     return b;
@@ -694,8 +760,8 @@ function showPick(){
     b.onclick=()=>{sfx.tap();drawVor(cual,p1)};
     return b;
   };
-  row.appendChild(mk('\U0001F910 Verdad','good','truths'));
-  row.appendChild(mk('\U0001F525 Reto','bad','dares'));
+  row.appendChild(mk('🤐 Verdad','good','truths'));
+  row.appendChild(mk('🔥 Reto','bad','dares'));
   w.appendChild(row);
   $('quickadd').innerHTML='';
   renderRules();
@@ -748,7 +814,7 @@ function startMix(){
   if(mezcla.length<10){toast('Elige al menos 2 modos');return}
   S.mixMap={};
   mezcla.forEach(x=>{S.mixMap[x.card]={nm:x.nm,c:x.color}});
-  startMode({id:'mix',nm:'Mix',em:'\U0001F3B0',c:'#e879f9',mix:true,lvl:S.intensity,
+  startMode({id:'mix',nm:'Mix',em:'🎰',c:'#e879f9',mix:true,lvl:S.intensity,
     ds:'Tus modos favoritos, todos revueltos.',deck:mezcla.map(x=>x.card)});
 }
 
@@ -761,18 +827,18 @@ function clearBomb(){ if(BOMB.t){clearTimeout(BOMB.t);BOMB.t=null} BOMB.running=
 function initBomb(){
   clearBomb();
   $('bombabox').innerHTML=`<div class="bombcard" id="bombcard">
-      <div class="bombemoji" id="bombemoji">\U0001F4A3</div>
+      <div class="bombemoji" id="bombemoji">💣</div>
       <div class="bombcat" id="bombcat">Toca encender para sacar categoría</div>
       <div class="bombhint" id="bombhint">Por turnos, cada uno dice un ejemplo y pasa el celular.
       A quien le explote, ${S.noAlcohol?'suma 3 puntos':'toma 3 sorbos'}.</div>
     </div>`;
-  $('bombbtn').textContent='\U0001F525 Encender la mecha';
+  $('bombbtn').textContent='🔥 Encender la mecha';
 }
 function toggleBomb(){
   if(BOMB.running){ clearBomb(); initBomb(); toast('Mecha apagada'); return }
   if(S.players.length<3){ toast('La bomba necesita al menos 3 jugadores'); return }
   $('bombcat').textContent=rnd(BOMB_CATS);
-  $('bombemoji').textContent='\U0001F9E8';
+  $('bombemoji').textContent='🧨';
   $('bombcard').className='bombcard lit';
   $('bombhint').textContent=`Empieza ${rnd(S.players).n}. ¡Rápido!`;
   $('bombbtn').textContent='✋ Apagar';
@@ -793,12 +859,12 @@ function bombTick(total){
 function bombBoom(){
   clearBomb();
   $('bombcard').className='bombcard boom';
-  $('bombemoji').textContent='\U0001F4A5';
+  $('bombemoji').textContent='💥';
   $('bombcat').textContent='¡BOOM!';
   $('bombhint').textContent=S.noAlcohol
     ? 'A quien le explotó: suma 3 puntos. Vuelve a encender para otra ronda.'
     : 'A quien le explotó: toma 3 sorbos. Vuelve a encender para otra ronda.';
-  $('bombbtn').textContent='\U0001F504 Otra ronda';
+  $('bombbtn').textContent='🔄 Otra ronda';
   sfx.boom(); vib([200,80,400]);
 }
 
@@ -814,8 +880,8 @@ renderFootnote();
 
 /* ---------- arranque ---------- */
 load();
-$('alcoSwitch').classList.toggle('on',S.noAlcohol);
-$('sndSwitch').classList.toggle('on',S.sound);
+setSwitch('alcoSwitch',S.noAlcohol);
+setSwitch('sndSwitch',S.sound);
 renderChips();
 renderPlayers();
 if(S.players.length) $('gate').querySelector('.card h2').textContent='Bienvenidos de vuelta';
@@ -828,22 +894,55 @@ if(S.players.length) $('gate').querySelector('.card h2').textContent='Bienvenido
 function initSW(){
   if(!('serviceWorker' in navigator)) return;
   if(!/^https?:$/.test(location.protocol)) return;
+
+  /* El aviso va en su propio elemento, creado aca mismo. Antes reusaba el
+     toast normal: como ese se muestra todo el tiempo ("+1 sorbo"), se
+     pisaban entre si y quedaba un toast invisible que al tocarlo recargaba
+     la pagina en medio de la partida. */
+  function banner(){
+    let a=$('swupdate');
+    if(!a){
+      a=document.createElement('div');
+      a.id='swupdate';
+      a.className='toast';                  // hereda el estilo del toast
+      a.style.pointerEvents='auto';
+      a.style.cursor='pointer';
+      a.style.bottom='150px';               // arriba del toast normal
+      document.body.appendChild(a);
+    }
+    return a;
+  }
+
+  function avisar(sw){
+    if(!sw) return;
+    if(!navigator.serviceWorker.controller) return;   // primera instalacion, nada que avisar
+    const a=banner();
+    if(a.dataset.on==='1') return;
+    a.dataset.on='1';
+    a.textContent='Hay una version nueva \u2192 toca para actualizar';
+    a.classList.add('show');
+    a.onclick=()=>{
+      a.textContent='Actualizando\u2026';
+      a.onclick=null;
+      // Se recarga recien cuando el service worker nuevo toma el control:
+      // hacerlo antes volveria a servir la version vieja.
+      navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload(),{once:true});
+      setTimeout(()=>location.reload(),3000);   // por si el evento no llega
+      sw.postMessage({type:'SKIP_WAITING'});
+    };
+  }
+
   navigator.serviceWorker.register('./sw.js').then(reg=>{
-    reg.addEventListener('updatefound',()=>{
-      const nuevo=reg.installing;
-      if(!nuevo) return;
-      nuevo.addEventListener('statechange',()=>{
-        if(nuevo.state==='installed'&&navigator.serviceWorker.controller){
-          const t=$('toast');
-          t.textContent='Hay una version nueva. Toca aqui para actualizar.';
-          t.classList.add('show');
-          t.style.pointerEvents='auto';
-          t.onclick=()=>{ nuevo.postMessage({type:'SKIP_WAITING'}); location.reload() };
-          clearTimeout(t._x);
-          t._x=setTimeout(()=>{t.classList.remove('show');t.style.pointerEvents='none';t.onclick=null},12000);
-        }
-      });
-    });
+    function seguir(sw){
+      if(!sw) return;
+      if(sw.state==='installed') return avisar(sw);
+      sw.addEventListener('statechange',()=>{ if(sw.state==='installed') avisar(sw) });
+    }
+    // Puede haber terminado de instalarse antes de llegar aca, asi que se
+    // revisa el estado actual y ademas se escucha lo que venga despues.
+    if(reg.waiting) avisar(reg.waiting);
+    if(reg.installing) seguir(reg.installing);
+    reg.addEventListener('updatefound',()=>seguir(reg.installing));
   }).catch(()=>{});
 }
 initSW();
