@@ -1,0 +1,19 @@
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# OneDrive / editores
+*.tmp
+*~
+.vscode/
+.idea/
+
+# Python (tools/)
+__pycache__/
+*.pyc
+.venv/
+
+# Node (solo tests, no hay build)
+node_modules/
