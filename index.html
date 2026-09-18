@@ -293,7 +293,9 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
         <div class="switch" id="sndSwitch" onclick="toggleSound()" role="switch" aria-checked="true" aria-label="Alternar sonido" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}"></div>
         <span>🔊 Sonido</span>
       </div>
-      <div class="footnote" id="foot">+380 cartas 100% originales · 22 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
+      <!-- renderFootnote() recalcula estos números al cargar; esto es lo que
+           se ve sin JS, y un test verifica que coincida con el mazo real -->
+      <div class="footnote" id="foot">653 cartas originales · 25 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
     </div>
   </section>
 

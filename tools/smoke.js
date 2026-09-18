@@ -108,6 +108,23 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     logs.push('   pie: ' + t.split('·').slice(0, 2).join('·').trim());
   });
 
+  await run('el pie escrito a mano en index.html no quedó desfasado', () => {
+    // renderFootnote() lo reemplaza al cargar, pero el HTML crudo es lo que
+    // ve un buscador o alguien sin JS: no puede prometer un número falso.
+    const cartas = MODES().reduce((s, m) => s + m.deck.length, 0);
+    const modos = MODES().length + ev('SPECIALS').length;
+    const crudo = require('fs')
+      .readFileSync(require('path').join(ROOT, 'index.html'), 'utf8')
+      .match(/id="foot"[^>]*>([^<]*)/);
+    if (!crudo) throw new Error('no encontré el pie en index.html');
+    const dice = crudo[1];
+    const nums = (dice.match(/\d+/g) || []).map(Number);
+    if (!nums.includes(cartas) || !nums.includes(modos)) {
+      throw new Error('el pie de index.html dice "' + dice.trim() +
+        '" pero hay ' + cartas + ' cartas y ' + modos + ' modos');
+    }
+  });
+
   await run('jugar 40 turnos en cada modo', async () => {
     let peor = null;
     for (const m of MODES()) {
