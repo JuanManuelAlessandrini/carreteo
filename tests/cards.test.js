@@ -28,6 +28,13 @@ test('todas las cartas tienen un tipo válido', () => {
   assert.deepStrictEqual(malas, []);
 });
 
+test('todo tipo de carta en uso tiene etiqueta en TYPES', () => {
+  // sin esto la carta se rotula "Carta" en pantalla y nadie lo nota
+  const usados = new Set(todasLasCartas().map(x => E.parseCard(x.card).k));
+  const sinNombre = [...usados].filter(k => !C.TYPES[k] || !C.TYPES[k].l);
+  assert.deepStrictEqual(sinNombre, []);
+});
+
 test('ninguna carta usa {j2} sin {j}', () => {
   const malas = todasLasCartas()
     .filter(x => x.card.includes('{j2}') && !x.card.includes('{j}'))

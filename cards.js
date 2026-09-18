@@ -18,7 +18,7 @@
 
 /* ---------- tipos de carta ---------- */
 const TYPES={
-  r:{l:'Reto'}, p:{l:'Pregunta'}, yn:{l:'Yo nunca'}, rg:{l:'Regla nueva'}, vt:{l:'Votación'}, vs:{l:'Duelo'}, mm:{l:'Mímica'}, tm:{l:'Contrarreloj'}, dd:{l:'Dado'}, sh:{l:'Shot'}, cc:{l:'Cultura chupística'}, tr:{l:'Reparte'}, aq:{l:'Hidrátate 💧'}
+  r:{l:'Reto'}, p:{l:'Pregunta'}, yn:{l:'Yo nunca'}, rg:{l:'Regla nueva'}, vt:{l:'Votación'}, vs:{l:'Duelo'}, mm:{l:'Mímica'}, tm:{l:'Contrarreloj'}, dd:{l:'Dado'}, sh:{l:'Shot'}, cc:{l:'Cultura chupística'}, tr:{l:'Reparte'}, aq:{l:'Hidrátate 💧'}, pc:{l:'Premio o castigo'}
 };
 
 /* ---------- modos de cartas ---------- */
