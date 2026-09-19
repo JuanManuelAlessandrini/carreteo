@@ -8,7 +8,7 @@
 //
 // Para publicar una versión nueva basta subir el número de CACHE.
 
-const CACHE = 'carreteo-v2.0.1';
+const CACHE = 'carreteo-v2.1.0';
 const ASSETS = [
   './',
   './index.html',

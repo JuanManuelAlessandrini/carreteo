@@ -24,6 +24,7 @@ const S={
 
 const AVCOLORS=['#ff3d7f','#ffb24d','#8b6cff','#59c2ff','#34d399','#f472b6','#facc15','#7dd3fc'];
 const LVL_NM={1:'Suave',2:'Medio',3:'Picante'};
+const TRIVIA_SEGS=20;   // segundos para responder una carta con respuesta
 
 /* Los switch se declaran con role="switch", asi que el estado visual no
    alcanza: un lector de pantalla lee aria-checked, no la clase. */
@@ -37,6 +38,16 @@ function setSwitch(id,v){
 /* Primera letra del nombre. Array.from respeta los emoji: con n[0] se
    parte el par surrogate y sale el rombo de caracter invalido. */
 function inicial(n){ return (Array.from(String(n||'?'))[0]||'?').toUpperCase() }
+
+/* Los que se fueron a acostar siguen en S.players con su marcador, pero ya no
+   participan: no salen sorteados, no entran en la ronda de la bomba y no
+   toman cuando la carta dice "todos". Todo lo que reparte juego usa esta
+   lista; el marcador y el resumen usan S.players entera. */
+function enJuego(){ return S.players.filter(p=>!p.out) }
+function hora(ts){
+  const d=new Date(ts||0);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
 
 /* ---------- memoria ----------
    Jugadores, marcador y preferencias sobreviven al cierre.
@@ -59,6 +70,7 @@ function load(){
     if(Array.isArray(d.players)){
       S.players=d.players.filter(p=>p&&p.n).map((p,i)=>({
         n:String(p.n).slice(0,16), sips:+p.sips||0, done:+p.done||0, skip:+p.skip||0,
+        out:+p.out||0,                      // hora en que se fue a acostar
         // el color entra a un atributo style: si no se valida, un
         // localStorage manipulado puede inyectar atributos
         c:/^#[0-9a-f]{6}$/i.test(p.c||'')?p.c:AVCOLORS[i%AVCOLORS.length]
@@ -174,16 +186,43 @@ function renderChips(){
 function addPlayer(){
   const i=$('pname'),n=i.value.trim();
   if(!n) return;
-  if(S.players.some(p=>p.n.toLowerCase()===n.toLowerCase())){toast('Ese nombre ya está');return}
-  S.players.push({n,sips:0,done:0,skip:0,c:AVCOLORS[S.players.length%AVCOLORS.length]});
+  const ya=S.players.findIndex(p=>p.n.toLowerCase()===n.toLowerCase());
+  if(ya>=0){
+    // Si se había ido a acostar y vuelve, lo natural es escribir su nombre de
+    // nuevo: se despierta con su marcador en vez de rebotar por duplicado.
+    if(S.players[ya].out){ i.value=''; i.focus(); despertar(ya); return }
+    toast('Ese nombre ya está'); return;
+  }
+  S.players.push({n,sips:0,done:0,skip:0,out:0,c:AVCOLORS[S.players.length%AVCOLORS.length]});
   if(!S.startedAt) S.startedAt=Date.now();
   S.bag={};                       // cambió el grupo: se rearma el reparto de turnos
   i.value='';i.focus();
   renderPlayers(); save(); sfx.tap();
 }
-function delPlayer(i){S.players.splice(i,1);S.bag={};renderPlayers();save()}
+/* Sacar a alguien de la lista significa que se fue a acostar: conserva sus
+   sorbos y queda en el resumen con la hora. El borrado de verdad esta en la
+   seccion de los dormidos, por si el nombre habia quedado mal escrito. */
+function aDormir(i){
+  const p=S.players[i]; if(!p||p.out) return;
+  p.out=Date.now(); S.bag={};              // cambio la mesa: se rearma el reparto
+  renderPlayers(); save(); sfx.tap(); vib(15);
+  toast(`${p.n} se fue a acostar 🛌`);
+}
+function despertar(i){
+  const p=S.players[i]; if(!p||!p.out) return;
+  p.out=0; S.bag={};
+  renderPlayers(); save(); sfx.tap();
+  toast(`${p.n} volvio 🎉`);
+}
+function borrarJugador(i){
+  const p=S.players[i]; if(!p) return;
+  S.players.splice(i,1); S.bag={};
+  renderPlayers(); save();
+  toast(`${p.n} borrado de la lista`);
+}
+const delPlayer=aDormir;   // nombre viejo, por si quedo alguna referencia
 function newGame(){
-  S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0});
+  S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0;p.out=0});   // vuelven todos
   S.recent={}; S.bag={}; S.startedAt=Date.now(); S.totalDrawn=0;
   renderPlayers(); save();
   toast('Partida nueva: marcador en cero, mismos jugadores 🔄');
@@ -197,15 +236,34 @@ function clearAll(){
 }
 function renderPlayers(){
   const L=$('plist');L.innerHTML='';
-  S.players.forEach((p,i)=>{
+  const despiertos=[],dormidos=[];
+  S.players.forEach((p,i)=>(p.out?dormidos:despiertos).push({p,i}));
+
+  despiertos.forEach(({p,i})=>{
     const d=document.createElement('div');d.className='prow';
-    d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div><div class="nm">${esc(p.n)}</div><button class="del" onclick="delPlayer(${i})" aria-label="Eliminar a ${esc(p.n)}">✕</button>`;
+    d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div><div class="nm">${esc(p.n)}</div><button class="del" onclick="aDormir(${i})" aria-label="${esc(p.n)} se fue a acostar">🛌</button>`;
     L.appendChild(d);
   });
+
+  if(dormidos.length){
+    const t=document.createElement('div');t.className='sect sleep';
+    t.textContent='Se fueron a acostar';
+    L.appendChild(t);
+    dormidos.sort((a,b)=>a.p.out-b.p.out).forEach(({p,i})=>{
+      const d=document.createElement('div');d.className='prow sleeping';
+      d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div>
+        <div class="nm">${esc(p.n)} <span class="sleeptag">${hora(p.out)} · ${p.sips||0}</span></div>
+        <button class="del" onclick="despertar(${i})" aria-label="${esc(p.n)} volvio">↩</button>
+        <button class="del" onclick="borrarJugador(${i})" aria-label="Borrar a ${esc(p.n)} de la lista">✕</button>`;
+      L.appendChild(d);
+    });
+  }
+
+  const act=enJuego();
   $('phint').style.display=S.players.length?'none':'block';
-  $('pcount').textContent=S.players.length;
+  $('pcount').textContent=act.length;
   $('presetRow').style.display=S.players.length?'flex':'none';
-  const ok=S.players.length>=2;
+  const ok=act.length>=2;
   $('toModes').disabled=!ok;$('toModes').style.opacity=ok?1:.4;
 }
 function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -224,7 +282,7 @@ function renderModes(){
   MODES.filter(m=>!m.season).forEach(m=>g.appendChild(tile(m,()=>startMode(m))));
   const s=$('mgridSpecial');s.innerHTML='';
   SPECIALS.forEach(m=>s.appendChild(tile(m,()=>{
-    if(m.min&&S.players.length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
+    if(m.min&&enJuego().length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
     go(m.id);
   })));
   const z=$('mgridSeason');z.innerHTML='';
@@ -248,7 +306,7 @@ function deckFor(m){
 
 function startMode(m){
   clearAnim();
-  if(m.min&&S.players.length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
+  if(m.min&&enJuego().length<m.min){toast(`Este modo necesita mínimo ${m.min} jugadores`);return}
   S.mode=m;S.rules=[];S.drawn=0;
   if(!S.startedAt) S.startedAt=Date.now();
   document.documentElement.style.setProperty('--accent',m.c);
@@ -265,15 +323,18 @@ function startMode(m){
 /* Bolsa de turnos: nadie vuelve a ser {j} hasta que pasaron todos. */
 function pickPlayers(){
   const key=S.mode?S.mode.id:'_';
-  const r=E.nextPlayers(S.bag[key]||{},S.players.length);
+  const ps=enJuego();
+  if(!ps.length) return [null,null];
+  const r=E.nextPlayers(S.bag[key]||{},ps.length);
   S.bag[key]=r.state;
-  const p1=S.players[r.i1]||S.players[0];
-  const p2=S.players[r.i2]||p1;
+  const p1=ps[r.i1]||ps[0];
+  const p2=ps[r.i2]||p1;
   return [p1,p2];
 }
 function otherThan(p){
-  if(S.players.length<2) return p;
-  return rnd(S.players.filter(x=>x!==p));
+  const ps=enJuego();
+  if(ps.length<2) return p;
+  return rnd(ps.filter(x=>x!==p));
 }
 let curCard=null,curP1=null,curP2=null;
 /* La animacion de salida dura 200 ms y recien ahi se dibuja la carta
@@ -330,25 +391,93 @@ function showCard(raw,forceP1){
     w.appendChild(b);
   }
   if(ans){
+    /* Trivia contra reloj: el cronometro arranca solo al salir la carta, que
+       es lo que le da gracia. Al acabarse se revela la respuesta sola y queda
+       la fila de sorbos lista para anotarle al que no supo. Se puede revelar
+       antes tocando el boton. Los segundos salen de la carta (p20|...) y si
+       no dice nada, 20. */
+    const segs=c.n||TRIVIA_SEGS;
+    const reloj=document.createElement('div');reloj.className='timerbig';reloj.textContent=segs;
     const b=document.createElement('button');b.className='wbtn';b.textContent='👁 Ver respuesta';
-    b.onclick=()=>{b.remove();const d=document.createElement('div');d.className='answer';d.textContent=adapt(ans);w.appendChild(d)};
-    w.appendChild(b);
+    const revelar=()=>{
+      clearTimer();
+      reloj.remove(); b.remove();
+      const d=document.createElement('div');d.className='answer';d.textContent=adapt(ans);
+      w.appendChild(d);
+    };
+    b.onclick=revelar;
+    w.appendChild(reloj);w.appendChild(b);
+    let t=segs;
+    S.timer=setInterval(()=>{
+      t--;reloj.textContent=t;
+      if(t>0){
+        sfx.tick(t<=3);
+        if(t<=3){ reloj.classList.add('urgent'); vib(20) }
+      }else{
+        sfx.timeUp(); vib([120,60,120]);
+        revelar();
+      }
+    },1000);
   }
   renderQuick(txt,c,p1,p2);
   renderRules();
   S.drawn++;S.totalDrawn++;$('gcount').textContent=`carta ${S.drawn}`;
 }
-function renderQuick(txt,c,p1,p2){
-  const q=$('quickadd');q.innerHTML='';
-  const m=adapt(txt).match(/(\d+)\s*(sorbo|punto)/i);
-  const n=m?parseInt(m[1]):1;
-  const mk=(p)=>{const b=document.createElement('button');b.className='qbtn';
+/* ---------- anotar sorbos ----------
+   Muchas cartas no dicen quien pierde ("el ultimo en tocar algo rojo"), y en
+   la ruleta, el impostor o la bomba lo decide el juego y no la carta. Antes
+   solo se le podia anotar al que la carta nombraba; el resto habia que
+   sumarlo a mano en el marcador. Ahora salen todos: los que la carta nombra
+   van destacados, pero se puede tocar a cualquiera. Una sola fila que se
+   desliza, asi la carta no pierde alto aunque sean ocho.
+--------------------------------------*/
+function addSips(p,n){
+  if(!p) return;
+  p.sips=(p.sips||0)+n; save(); sfx.tap(); vib(10);
+  toast(`${p.n}: ${p.sips} ${S.noAlcohol?'puntos':'sorbos'} 🏆`);
+}
+function renderSipRow(cont,n,destacados,conTodos,etiqueta){
+  if(!cont) return;
+  cont.innerHTML='';
+  const ps=enJuego();
+  if(!ps.length) return;
+  const dest=(destacados||[]).filter(Boolean);
+  const pal=S.noAlcohol?'puntos':'sorbos';
+
+  const lab=document.createElement('div');
+  lab.className='qlabel';
+  lab.textContent=`${etiqueta||'toca al que toma'} · +${n} ${pal}`;
+  cont.appendChild(lab);
+
+  const row=document.createElement('div');row.className='qrow';
+  ps.forEach(p=>{
+    const b=document.createElement('button');
+    b.className='qbtn'+(dest.indexOf(p)>=0?' named':'');
     b.innerHTML=`+${n} <b>${esc(p.n)}</b>`;
-    b.onclick=()=>{p.sips+=n;save();sfx.tap();toast(`${p.n}: ${p.sips} ${S.noAlcohol?'puntos':'sorbos'} 🏆`)};q.appendChild(b)};
-  if(txt.includes('{j}')&&p1)mk(p1);
-  if(txt.includes('{j2}')&&p2)mk(p2);
-  const all=document.createElement('button');all.className='qbtn';all.innerHTML=`+1 <b>todos</b>`;
-  all.onclick=()=>{S.players.forEach(p=>p.sips++);save();sfx.tap();toast('Todos +1 🍻')};q.appendChild(all);
+    b.setAttribute('aria-label',`Sumarle ${n} ${pal} a ${p.n}`);
+    b.onclick=()=>addSips(p,n);
+    row.appendChild(b);
+  });
+  cont.appendChild(row);
+
+  if(conTodos){
+    const all=document.createElement('button');
+    all.className='qbtn qall';all.innerHTML=`+1 <b>a todos</b>`;
+    all.setAttribute('aria-label',`Sumarle un ${pal.slice(0,-1)} a todos`);
+    all.onclick=()=>{ps.forEach(p=>p.sips=(p.sips||0)+1);save();sfx.tap();toast('Todos +1 🍻')};
+    cont.appendChild(all);
+  }
+}
+/* La misma fila dentro de una pantalla especial, creando el contenedor. */
+function sipRowIn(parent,n,destacados,etiqueta){
+  if(!parent) return null;
+  let c=parent.querySelector('.quickadd');
+  if(!c){ c=document.createElement('div');c.className='quickadd';parent.appendChild(c) }
+  renderSipRow(c,n,destacados,false,etiqueta);
+  return c;
+}
+function renderQuick(txt,c,p1,p2){
+  renderSipRow($('quickadd'),E.sipsInText(adapt(txt)),[p1,p2],true);
 }
 function nextCard(skipped){
   if(avanzando) return;
@@ -439,9 +568,9 @@ function renderBoard(){
   const sorted=S.players.slice().sort((a,b)=>b.sips-a.sips);
   const max=sorted.length?sorted[0].sips:0;
   sorted.forEach(p=>{
-    const d=document.createElement('div');d.className='prow';
+    const d=document.createElement('div');d.className='prow'+(p.out?' sleeping':'');
     d.innerHTML=`<div class="pav" style="background:${p.c}">${esc(inicial(p.n))}</div>
-      <div class="nm">${esc(p.n)} ${p.sips===max&&max>0?'<span class="crown">👑</span>':''}</div>
+      <div class="nm">${esc(p.n)} ${p.sips===max&&max>0?'<span class="crown">👑</span>':''}${p.out?`<span class="sleeptag">🛌 ${hora(p.out)}</span>`:''}</div>
       <div class="sipnum">${p.sips}</div>
       <div class="sipbtns"><button data-a="-1" aria-label="Restarle uno a ${esc(p.n)}">−</button><button data-a="1" aria-label="Sumarle uno a ${esc(p.n)}">＋</button></div>`;
     d.querySelectorAll('.sipbtns button').forEach(b=>b.onclick=()=>{p.sips=Math.max(0,p.sips+parseInt(b.dataset.a));renderBoard();save();sfx.tap()});
@@ -496,6 +625,18 @@ function renderSummary(){
     html+=`<div class="sumcard"><span class="sumtag">El gallina 🐔</span>
       <div class="sumbig">${esc(s.chicken.n)}</div>
       <div class="sumsub">${s.chicken.skip} retos saltados</div></div>`;
+  }
+  const dormidos=S.players.filter(x=>x.out).sort((a,b)=>a.out-b.out);
+  if(dormidos.length){
+    html+=`<div class="sumcard"><span class="sumtag">Se fueron a acostar 🛌</span>
+      <div class="sumbig">${esc(dormidos[0].n)} fue el primero en caer</div>
+      <div class="sleeplist">${dormidos.map(x=>`
+        <div class="sleeprow">
+          <div class="pav" style="background:${x.c}">${esc(inicial(x.n))}</div>
+          <div class="nm">${esc(x.n)}</div>
+          <div class="sleepwhen">${hora(x.out)}</div>
+          <div class="sipnum">${x.sips||0}</div>
+        </div>`).join('')}</div></div>`;
   }
   html+=`<div class="sumstats">
     <div class="sumstat"><div class="sn">${s.cards}</div><div class="sl">cartas jugadas</div></div>
@@ -588,10 +729,15 @@ async function shareSummary(){
 
 /* ---------- ruleta ---------- */
 let wAngle=0,wSpinning=false;
-function initWheel(){drawWheel(wAngle);$('wheelres').innerHTML='<div class="what">Gira para elegir a la víctima… digo, al afortunado.</div>'}
+function initWheel(){
+  drawWheel(wAngle);
+  $('wheelres').innerHTML='<div class="what">Gira para elegir a la víctima… digo, al afortunado.</div>';
+  const q=$('wheelbox').querySelector('.quickadd'); if(q) q.remove();
+}
 function drawWheel(angle){
   const cv=$('wheel'),ctx=cv.getContext('2d');
-  const N=Math.max(S.players.length,2),R=150;
+  const ps=enJuego();
+  const N=Math.max(ps.length,2),R=150;
   ctx.clearRect(0,0,300,300);ctx.save();ctx.translate(150,150);ctx.rotate(angle);
   for(let i=0;i<N;i++){
     const a0=i*2*Math.PI/N,a1=(i+1)*2*Math.PI/N;
@@ -599,7 +745,7 @@ function drawWheel(angle){
     ctx.fillStyle=AVCOLORS[i%AVCOLORS.length];ctx.fill();
     ctx.save();ctx.rotate((a0+a1)/2);ctx.textAlign='right';
     ctx.fillStyle='#17131f';ctx.font='700 14px Space Grotesk, sans-serif';
-    ctx.fillText((S.players[i]?S.players[i].n:'—').slice(0,10),R-12,5);
+    ctx.fillText((ps[i]?ps[i].n:'—').slice(0,10),R-12,5);
     ctx.restore();
   }
   ctx.restore();
@@ -608,7 +754,7 @@ function drawWheel(angle){
 }
 function spin(){
   if(wSpinning)return;
-  if(S.players.length<2){toast('Agrega jugadores primero');return}
+  if(enJuego().length<2){toast('Agrega jugadores primero');return}
   wSpinning=true;sfx.spin();$('spinbtn').style.opacity=.5;
   const extra=6*Math.PI+Math.random()*2*Math.PI;
   const start=wAngle,dur=3200,t0=performance.now();
@@ -618,11 +764,14 @@ function spin(){
     if(p<1)requestAnimationFrame(frame);
     else{
       wSpinning=false;$('spinbtn').style.opacity=1;
-      const N=S.players.length;
+      const ps=enJuego();
+      const N=ps.length;
       const norm=((-Math.PI/2 - wAngle)%(2*Math.PI)+2*Math.PI)%(2*Math.PI);
       const idx=Math.floor(norm/(2*Math.PI/N));
-      const who=S.players[idx];
-      $('wheelres').innerHTML=`<div class="who">${esc(who.n)}</div><div class="what">${esc(adapt(rnd(WHEEL_DARES)))}</div>`;
+      const who=ps[idx]||ps[0];
+      const reto=adapt(rnd(WHEEL_DARES));
+      $('wheelres').innerHTML=`<div class="who">${esc(who.n)}</div><div class="what">${esc(reto)}</div>`;
+      sipRowIn($('wheelbox'),E.sipsInText(reto),[who],'si no lo hace, toma');
       sfx.win(); vib([40,40,90]);
     }
   }
@@ -638,20 +787,24 @@ function impSetup(){
   <button class="btn btn-primary" onclick="impStart()">Repartir roles 🎲</button>`;
 }
 function impStart(){
+  const ps=enJuego();
+  if(ps.length<3){ toast('El impostor necesita al menos 3 jugadores'); return }
   const cats=Object.keys(IMP_WORDS),cat=rnd(cats);
-  IMP={cat,word:rnd(IMP_WORDS[cat]),imp:Math.floor(Math.random()*S.players.length),i:0};
+  // se congela la mesa al repartir: si alguien se va a acostar a mitad de
+  // ronda, los indices no se corren y el impostor sigue siendo el mismo
+  IMP={cat,word:rnd(IMP_WORDS[cat]),ps,imp:Math.floor(Math.random()*ps.length),i:0};
   impReveal();
 }
 function impReveal(){
   const box=$('impbox');
-  if(IMP.i>=S.players.length){
+  if(IMP.i>=IMP.ps.length){
     box.innerHTML=`<div class="impcard"><h3>¡A debatir! 🗣️</h3>
     <p style="color:var(--muted);font-size:14px;line-height:1.6">Categoría: <b style="color:var(--mango)">${IMP.cat}</b>.<br>Una pista por cabeza, después voten en voz alta.</p></div>
     <button class="btn btn-ghost" onclick="impRevealImp()" style="margin-bottom:10px">Revelar al impostor 👀</button>
     <button class="btn btn-primary" onclick="impStart()">Otra ronda</button>`;
     return;
   }
-  const p=S.players[IMP.i];
+  const p=IMP.ps[IMP.i];
   box.innerHTML=`<div class="impcard"><h3>Pásale el cel a</h3><div class="impword">${esc(p.n)}</div>
   <p style="color:var(--muted);font-size:13px">Que nadie más mire 👀</p></div>
   <button class="holdbtn" id="holdb">Mantén presionado para ver tu rol</button>
@@ -668,8 +821,10 @@ function impReveal(){
   hb.addEventListener('mouseup',hide);
 }
 function impRevealImp(){
-  const p=S.players[IMP.imp];
+  const p=IMP.ps&&IMP.ps[IMP.imp];
+  if(!p) return;
   $('impbox').insertAdjacentHTML('afterbegin',`<div class="impcard"><h3>El impostor era…</h3><div class="impimp">${esc(p.n)} 🕵️</div><p style="color:var(--muted);font-size:14px">¿Lo atraparon? Toma 4. ¿Se salvó? El resto toma 2.</p></div>`);
+  sipRowIn($('impbox'),4,[p],'¿quién toma?');
 }
 
 /* ---------- cuarto rey ---------- */
@@ -822,7 +977,7 @@ function startMix(){
    Categoria al azar y mecha oculta. El tic-tac acelera al final:
    nadie sabe cuanto queda, esa es la gracia.
 --------------------------------*/
-let BOMB={t:null,running:false,left:0};
+let BOMB={t:null,running:false,left:0,turno:0,orden:[]};
 function clearBomb(){ if(BOMB.t){clearTimeout(BOMB.t);BOMB.t=null} BOMB.running=false }
 function initBomb(){
   clearBomb();
@@ -836,11 +991,19 @@ function initBomb(){
 }
 function toggleBomb(){
   if(BOMB.running){ clearBomb(); initBomb(); toast('Mecha apagada'); return }
-  if(S.players.length<3){ toast('La bomba necesita al menos 3 jugadores'); return }
+  const ps=enJuego();
+  if(ps.length<3){ toast('La bomba necesita al menos 3 jugadores'); return }
+  /* La vuelta sigue el orden en que se anotaron los nombres, que es el orden
+     en que estan sentados. Cada ronda la empieza el siguiente, asi a todos
+     les toca partir y nadie queda siempre con la papa caliente. */
+  const inicio=BOMB.turno%ps.length;
+  BOMB.orden=ps.slice(inicio).concat(ps.slice(0,inicio));
+  BOMB.turno=inicio+1;
   $('bombcat').textContent=rnd(BOMB_CATS);
   $('bombemoji').textContent='🧨';
   $('bombcard').className='bombcard lit';
-  $('bombhint').textContent=`Empieza ${rnd(S.players).n}. ¡Rápido!`;
+  $('bombhint').innerHTML=`Empieza <b>${esc(BOMB.orden[0].n)}</b> y sigue en este orden:`
+    +`<div class="bomborden">${BOMB.orden.map(x=>esc(x.n)).join(' → ')} → ↻</div>`;
   $('bombbtn').textContent='✋ Apagar';
   BOMB.running=true;
   BOMB.left=18+Math.floor(Math.random()*28);   // entre 18 y 45 tics, oculto
@@ -861,10 +1024,10 @@ function bombBoom(){
   $('bombcard').className='bombcard boom';
   $('bombemoji').textContent='💥';
   $('bombcat').textContent='¡BOOM!';
-  $('bombhint').textContent=S.noAlcohol
-    ? 'A quien le explotó: suma 3 puntos. Vuelve a encender para otra ronda.'
-    : 'A quien le explotó: toma 3 sorbos. Vuelve a encender para otra ronda.';
+  $('bombhint').textContent='El celular lo tiene el que perdió. Tócalo aquí abajo y le anoto.';
   $('bombbtn').textContent='🔄 Otra ronda';
+  // la app no sabe en manos de quien quedo: hay que decirselo para poder anotar
+  sipRowIn($('bombabox'),3,[],'¿a quién le explotó?');
   sfx.boom(); vib([200,80,400]);
 }
 

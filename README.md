@@ -12,6 +12,18 @@ Pensado para que una persona lo abra en su teléfono y hostee la mesa: se agrega
 
 Una vez dentro: *Jugar* → agrega jugadores (mínimo 2) → elige intensidad 🌶️ → elige modo. El 🏆 abre el marcador de sorbos y *Terminar la noche* muestra el resumen con podio, el valiente y el gallina.
 
+### Anotar quién toma
+
+Debajo de cada carta hay una fila con **todos** los jugadores. Toca al que perdió y le suma los sorbos que dice la carta. El que la carta nombra viene destacado, pero muchas cartas no nombran a nadie ("el último en tocar algo rojo toma 2") y ahí el que pierde lo deciden ustedes.
+
+La misma fila aparece en la ruleta, en el impostor y cuando explota la bomba, porque en esos casos el que pierde lo decide el juego y la app no tiene cómo saberlo sola.
+
+### Cuando alguien se va a dormir
+
+El botón 🛌 de la lista de jugadores lo saca de la rueda: deja de salir nombrado en las cartas, no entra en la vuelta de la bomba y no toma cuando una carta dice "todos". Pero **conserva sus sorbos** y aparece en el resumen de la noche con la hora a la que cayó, incluido quién fue el primero.
+
+Si vuelve, el ↩ lo reincorpora — o simplemente escribe su nombre de nuevo. El ✕ que aparece al lado sí lo borra del todo, para cuando escribiste mal un nombre.
+
 ### Los modos
 
 | | | |
@@ -64,7 +76,7 @@ El switch 🚫🍺 traduce todos los "sorbos" a "puntos" en tiempo real, tambié
 | Código | Etiqueta | Notas |
 |---|---|---|
 | `r` | Reto | |
-| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`. |
+| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`. Arranca un cronómetro de 20s y al acabarse revela la respuesta sola; `p30` le da 30 segundos. |
 | `yn` | Yo nunca | |
 | `rg` | Regla nueva | `rg3` dura 3 rondas y se muestra en la barra de reglas activas. |
 | `vt` | Votación | |
@@ -87,8 +99,11 @@ El switch 🚫🍺 traduce todos los "sorbos" a "puntos" en tiempo real, tambié
 // duelo entre dos jugadores
 `vs|{j} vs {j2}: guerra de pulgares al mejor de 3. Perdedor toma 2.`,
 
-// trivia: la respuesta se revela al tocar la carta
+// trivia: 20 segundos y la respuesta se revela sola
 `p|¿Cuál es el río más largo del mundo?§El Amazonas. Fallo = 2 sorbos.`,
+
+// la misma, pero con 40 segundos porque es más difícil
+`p40|Nombra los países que limitan con Chile§Perú, Bolivia y Argentina. Fallo = 3 sorbos.`,
 
 // regla que dura 3 rondas
 `rg3|Prohibido decir "sí". Quien lo diga toma 1.`,

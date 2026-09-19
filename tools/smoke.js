@@ -35,8 +35,26 @@ const dom = new JSDOM(html, {
     // sin esperas de animación
     const realST = win.setTimeout;
     win.setTimeout = (fn, ms, ...a) => realST(fn, 0, ...a);
+    // Los cronómetros (trivia, cartas de contrarreloj) van de a un segundo.
+    // Se bajan a 1 ms, no a 0, para no dejar sin aire al event loop.
+    const realSI = win.setInterval;
+    win.setInterval = (fn, ms, ...a) => realSI(fn, ms >= 1000 ? 1 : ms, ...a);
+    /* El contexto es un muñeco que traga cualquier llamada, pero anota los
+       fillText: es la única forma de ver qué nombres dibujó la ruleta. Se
+       cachea por canvas para que lo anotado sobreviva entre getContext(). */
     win.HTMLCanvasElement.prototype.getContext = function () {
-      return new Proxy({}, { get: (t, k) => (k === 'canvas' ? {} : () => ({ addColorStop() {} })) });
+      if (!this.__ctx) {
+        const textos = [];
+        this.__ctx = new Proxy({}, {
+          get: (t, k) => {
+            if (k === '__textos') return textos;
+            if (k === 'canvas') return {};
+            if (k === 'fillText') return s => { textos.push(String(s)) };
+            return () => ({ addColorStop() {} });
+          }
+        });
+      }
+      return this.__ctx;
     };
     const audioStub = () => ({
       currentTime: 0, state: 'running', destination: {},
@@ -309,6 +327,135 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     logs.push('   mix de ' + origenes.size + ' modos, 30 cartas sin repetir');
   });
 
+  await run('trivia: el cronometro revela la respuesta al acabarse', async () => {
+    W.startMode(MODES().find(x => x.id === 'trivia'));
+    await tick();
+    const reloj = $('cwidget').querySelector('.timerbig');
+    if (!reloj) throw new Error('la carta de trivia no trae cronometro');
+    const segs = parseInt(reloj.textContent);
+    if (!(segs > 0)) throw new Error('el cronometro no arranca con segundos: ' + reloj.textContent);
+    if ($('cwidget').querySelector('.answer')) throw new Error('la respuesta se ve antes de tiempo');
+    for (let i = 0; i < segs * 40 && !$('cwidget').querySelector('.answer'); i++) await tick();
+    const ans = $('cwidget').querySelector('.answer');
+    if (!ans) throw new Error('nunca revelo la respuesta');
+    if (!ans.textContent.trim()) throw new Error('revelo una respuesta vacia');
+    if ($('cwidget').querySelector('.timerbig')) throw new Error('el cronometro quedo en pantalla');
+    logs.push('   trivia: ' + segs + 's y revelo "' + ans.textContent.slice(0, 32) + '..."');
+    W.endGame();
+  });
+
+  await run('la fila deja anotarle a cualquiera, no solo al que nombra la carta', async () => {
+    W.startMode(MODES().find(m => m.id === 'previa'));
+    await tick();
+    let intentos = 0;
+    while (!$('quickadd').querySelector('.qbtn.named') && intentos++ < 40) await avanzar(false);
+    if (!$('quickadd').querySelector('.qbtn.named')) throw new Error('ninguna carta destaco a su jugador');
+    const vivos = ev('enJuego()');
+    const btns = $('quickadd').querySelectorAll('.qrow .qbtn');
+    if (btns.length !== vivos.length) {
+      throw new Error('la fila muestra ' + btns.length + ' botones para ' + vivos.length + ' jugadores');
+    }
+    // se le puede anotar al ultimo de la fila aunque la carta no lo nombre
+    const otro = vivos[vivos.length - 1];
+    const antes = otro.sips;
+    btns[btns.length - 1].click();
+    if (otro.sips <= antes) throw new Error('no le anoto al jugador que elegi');
+    logs.push('   fila de ' + btns.length + ' jugadores, anoto a ' + otro.n);
+    W.endGame();
+  });
+
+  await run('se fue a acostar: sale del juego pero conserva su marcador', async () => {
+    const S0 = ev('S');
+    const total = S0.players.length;
+    const dormido = S0.players[3];
+    dormido.sips = 7;
+    W.aDormir(3);
+    if (S0.players.length !== total) throw new Error('lo borro en vez de acostarlo');
+    if (!dormido.out) throw new Error('no registro la hora en que se fue');
+    if (dormido.sips !== 7) throw new Error('le borro los sorbos');
+    if (ev('enJuego()').length !== total - 1) throw new Error('sigue contando como jugador activo');
+
+    W.startMode(MODES().find(m => m.id === 'previa'));
+    await tick();
+    for (let i = 0; i < 40; i++) {
+      if (ev('curP1') === dormido || ev('curP2') === dormido) {
+        throw new Error('le toco turno a ' + dormido.n + ', que se fue a acostar');
+      }
+      await avanzar(false);
+    }
+    logs.push('   ' + dormido.n + ' se acosto con ' + dormido.sips + ' y no salio en 40 turnos');
+    W.endGame();
+  });
+
+  await run('el que se fue a acostar no toma con "+1 a todos"', async () => {
+    const dormido = ev('S').players.find(p => p.out);
+    const antes = dormido.sips;
+    W.startMode(MODES().find(m => m.id === 'previa'));
+    await tick();
+    const todos = $('quickadd').querySelector('.qall');
+    if (!todos) throw new Error('falta el boton de sumarle a todos');
+    todos.click();
+    if (dormido.sips !== antes) throw new Error('le sumo un sorbo a alguien que ya se fue a dormir');
+    W.endGame();
+  });
+
+  await run('la ruleta y el impostor no reparten a los que se fueron', () => {
+    const dormido = ev('S').players.find(p => p.out);
+    const textos = $('wheel').getContext('2d').__textos;
+    textos.length = 0;
+    W.go('ruleta');
+    if (!textos.length) throw new Error('la ruleta no dibujó ningún nombre');
+    if (textos.includes(dormido.n)) throw new Error('la ruleta sigue dibujando a ' + dormido.n);
+    ev('enJuego()').forEach(p => {
+      if (!textos.includes(p.n)) throw new Error('falta ' + p.n + ' en la ruleta');
+    });
+    W.go('impostor');
+    W.impStart();
+    const mesa = ev('IMP').ps.map(p => p.n);
+    if (mesa.includes(dormido.n)) throw new Error('el impostor lo repartio igual');
+    if (mesa.length !== ev('enJuego()').length) throw new Error('la mesa del impostor no calza');
+    W.go('modes');
+  });
+
+  await run('el resumen cuenta quien se fue a acostar y a que hora', () => {
+    W.go('summary');
+    const caja = $('sumbox');
+    if (!/acostar/i.test(caja.textContent)) throw new Error('el resumen no los menciona');
+    const filas = caja.querySelectorAll('.sleeprow');
+    if (!filas.length) throw new Error('no lista a los que se fueron');
+    const dormido = ev('S').players.find(p => p.out);
+    if (!caja.textContent.includes(dormido.n)) throw new Error('falta el nombre del que se fue');
+    if (!/\d{2}:\d{2}/.test(caja.textContent)) throw new Error('no dice la hora');
+    // y sigue apareciendo en el ranking con sus sorbos
+    if (!caja.textContent.includes(String(dormido.sips))) throw new Error('perdio sus sorbos en el resumen');
+    logs.push('   ' + filas.length + ' se fueron a acostar');
+  });
+
+  await run('volvio: entra de nuevo al juego', () => {
+    const S0 = ev('S');
+    const i = S0.players.findIndex(p => p.out);
+    const p = S0.players[i];
+    const sorbos = p.sips;
+    W.despertar(i);
+    if (p.out) throw new Error('siguio marcado como dormido');
+    if (p.sips !== sorbos) throw new Error('perdio sus sorbos al volver');
+    if (ev('enJuego()').indexOf(p) < 0) throw new Error('no volvio a la lista de los que juegan');
+  });
+
+  await run('escribir de nuevo el nombre de uno que se acosto lo despierta', () => {
+    const S0 = ev('S');
+    const antes = S0.players.length;
+    const p = S0.players[3];
+    p.sips = 11;
+    W.aDormir(3);
+    W.go('players');
+    $('pname').value = p.n.toLowerCase();   // escrito distinto, es el mismo
+    W.addPlayer();
+    if (S0.players.length !== antes) throw new Error('creo un jugador duplicado');
+    if (p.out) throw new Error('no lo desperto');
+    if (p.sips !== 11) throw new Error('le borro los sorbos que llevaba');
+  });
+
   await run('bomba: enciende, hace tic-tac y explota', async () => {
     W.go('bomba');
     if (!$('bombcard')) throw new Error('no se dibujó la bomba');
@@ -319,10 +466,44 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     for (let i = 0; i < 80 && ev('BOMB').running; i++) await tick();
     if (ev('BOMB').running) throw new Error('la mecha nunca se acabó');
     if (!/BOOM/.test($('bombcat').textContent)) throw new Error('no mostró la explosión');
-    if (!/3/.test($('bombhint').textContent)) throw new Error('no dice cuánto toma el perdedor');
+    // la app no sabe en manos de quién quedó: tiene que ofrecer elegirlo
+    const fila = $('bombabox').querySelector('.quickadd');
+    if (!fila) throw new Error('al explotar no deja elegir a quién le tocó');
+    if (!/\+3/.test(fila.textContent)) throw new Error('no dice cuánto toma el perdedor');
+    const antes = ev('S').players[1].sips;
+    fila.querySelectorAll('.qbtn')[1].click();
+    if (ev('S').players[1].sips !== antes + 3) throw new Error('no le anotó los 3 al que eligió');
     logs.push('   categoría: ' + cat);
     W.go('modes');
     if (ev('BOMB').t) throw new Error('la mecha quedó corriendo al salir de la pantalla');
+  });
+
+  await run('bomba: la vuelta sigue el orden de la mesa, no el azar', async () => {
+    const nombres = ev('S').players.filter(p => !p.out).map(p => p.n);
+    const arranques = [];
+    for (let r = 0; r < nombres.length + 1; r++) {
+      W.go('bomba');
+      W.toggleBomb();
+      const orden = ev('BOMB').orden.map(p => p.n);
+      // la vuelta tiene que ser la mesa entera, rotada: mismo orden relativo
+      const giro = nombres.indexOf(orden[0]);
+      const esperado = nombres.slice(giro).concat(nombres.slice(0, giro));
+      if (orden.join() !== esperado.join()) {
+        throw new Error('la vuelta no respeta el orden de la mesa: ' + orden.join(' → '));
+      }
+      arranques.push(orden[0]);
+      W.clearBomb();
+    }
+    // en una vuelta completa tiene que partir cada uno una vez
+    const unaVuelta = arranques.slice(0, nombres.length);
+    if (new Set(unaVuelta).size !== nombres.length) {
+      throw new Error('alguien empezó dos veces antes de que partieran todos: ' + arranques.join(', '));
+    }
+    if (arranques[nombres.length] !== arranques[0]) {
+      throw new Error('la vuelta no vuelve a empezar por el primero');
+    }
+    logs.push('   arranques: ' + arranques.join(' → '));
+    W.go('modes');
   });
 
   await run('el atras del marcador no queda atrapado en el resumen', () => {
