@@ -687,6 +687,24 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     W.endGame();
   });
 
+  await run('compartir en vivo: sin red no reintenta en bucle', async () => {
+    // los timeouts del smoke van a 0 ms: aquí los largos (el reintento de
+    // 10 s) se dejan colgados, para ver solo lo que pasa sin esperar
+    const real = W.fetch, realST = W.setTimeout;
+    let n = 0, colgados = 0;
+    W.setTimeout = (fn, ms, ...a) => ms >= 5000 ? ++colgados + 1e6 : realST(fn, ms, ...a);
+    W.fetch = () => { n++; return Promise.reject(new Error('sin red')); };
+    W.Live.openShare();
+    for (let i = 0; i < 40; i++) await tick();
+    const status = $('livestatus').textContent;
+    W.Live.stopShare();
+    W.fetch = real; W.setTimeout = realST;
+    if (n > 2) throw new Error(n + ' intentos seguidos sin esperar');
+    if (!colgados) throw new Error('no dejó programado el reintento');
+    if (!/Sin conexión/.test(status)) throw new Error('no avisó la falla: ' + status);
+    for (let i = 0; i < 5; i++) await tick();
+  });
+
   await run('compartir en vivo: el espectador ve la partida y no escapa HTML', async () => {
     W.location.hash = '#ver=K7Q2AB';
     W.Live.boot();

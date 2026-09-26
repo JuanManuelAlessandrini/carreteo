@@ -199,9 +199,9 @@
     }).then(function () {
       H.last = key; setStatus('ok');
     }, function () {
-      setStatus('err');
       clearTimeout(H.retryT);
-      H.retryT = setTimeout(publish, 10000);
+      H.retryT = setTimeout(function () { H.retryT = null; publish() }, 10000);
+      setStatus('err');
     }).then(function () {
       H.busy = false;
       if (H.dirty) touch();
@@ -211,7 +211,10 @@
      nuevo: la bomba y los cronómetros tocan la pantalla seguido y con un
      debounce clásico la foto no saldría nunca. */
   function touch() {
-    if (!H.code || H.debT) return;
+    // Con un reintento pendiente no se publica antes: el mismo aviso de
+    // error cambia la pantalla, y sin esto cada falla dispararía otra al
+    // instante, en bucle. El reintento manda la foto más reciente.
+    if (!H.code || H.debT || H.retryT) return;
     H.debT = setTimeout(function () { H.debT = null; publish() }, 400);
   }
   /* Todo lo que cambia en pantalla dispara una publicación. Las repetidas
@@ -222,6 +225,10 @@
     H.obs = new MutationObserver(touch);
     H.obs.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
   }
+  function retryNow() {
+    clearTimeout(H.retryT); H.retryT = null;
+    H.last = ''; touch();
+  }
   function startHost(code) {
     var d = mem();
     H.uid = d.uid || null; H.refresh = d.refresh || null;
@@ -230,13 +237,13 @@
     if (H.wired) return;
     H.wired = true;
     // si el celular estuvo bloqueado, al volver se manda la foto al tiro
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) { H.last = ''; touch() } });
-    window.addEventListener('online', function () { H.last = ''; touch() });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) retryNow() });
+    window.addEventListener('online', retryNow);
   }
   function stopHost() {
     var code = H.code;
     H.code = null; H.last = '';
-    clearTimeout(H.retryT); clearTimeout(H.debT); H.debT = null;
+    clearTimeout(H.retryT); clearTimeout(H.debT); H.retryT = null; H.debT = null;
     if (H.obs) { H.obs.disconnect(); H.obs = null }
     var d = mem(); delete d.code; remember(d);
     setStatus('off');
