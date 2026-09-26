@@ -159,6 +159,14 @@ También hay una bolsa de turnos: nadie vuelve a ser el `{j}` hasta que todos ha
 
 ## Publicar una actualización
 
+**Cada vez que publiques, sube la versión en `sw.js`, aunque solo hayas cambiado `cards.js`:**
+
+```javascript
+const CACHE = 'carreteo-v2.1.1';   // ← 2.1.0 → 2.1.1
+```
+
+Después:
+
 ```bash
 npm run check                      # que esté todo verde
 git add -A
@@ -168,13 +176,7 @@ git push
 
 GitHub Pages publica solo, en un par de minutos.
 
-**Si tocaste cualquier archivo que no sea `cards.js`, sube la versión en `sw.js`:**
-
-```javascript
-const CACHE='carreteo-v2.0.1';   // ← 2.0.0 → 2.0.1
-```
-
-Los celulares guardan la app en caché. Sin cambiar ese número, quien ya la tenga instalada seguiría viendo la versión vieja. Al subirlo, la app muestra un aviso de "hay una versión nueva" que no corta la partida en curso.
+El service worker guarda todos los archivos de la app en caché, `cards.js` incluido, y los sirve desde ahí sin preguntarle a la red. Sin cambiar ese número, quien ya la tenga instalada seguiría viendo la versión vieja, cartas incluidas. Al subirlo, la app muestra un aviso de "hay una versión nueva" que no corta la partida en curso.
 
 ## Los archivos
 
