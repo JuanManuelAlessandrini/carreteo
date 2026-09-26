@@ -71,6 +71,22 @@ const dom = new JSDOM(html, {
     win.AudioContext = audioStub;
     win.webkitAudioContext = audioStub;
     win.addEventListener('error', e => errors.push(e.error ? e.error.stack : e.message));
+    /* Red falsa para compartir en vivo: Firebase contesta al tiro y cada
+       request queda anotado para revisar qué se mandó. */
+    win.__fetches = [];
+    win.fetch = (url, opt) => {
+      win.__fetches.push({ url: String(url), opt: opt || {} });
+      const body = /signUp/.test(url)
+        ? { idToken: 'tok1', refreshToken: 'ref1', localId: 'uid1', expiresIn: '3600' }
+        : {};
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    };
+    win.EventSource = class {
+      constructor(url) { this.url = url; this.readyState = 1; this.l = {}; win.__es = this; }
+      addEventListener(k, f) { (this.l[k] = this.l[k] || []).push(f); }
+      emit(k, data) { (this.l[k] || []).forEach(f => f({ data: JSON.stringify(data) })); }
+      close() { this.readyState = 2; }
+    };
   }
 });
 
@@ -527,7 +543,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const fs2 = require('fs'), path2 = require('path');
     const roto = /\\U[0-9A-Fa-f]{8}/g;
     const malos = [];
-    ['app.js', 'cards.js', 'engine.js', 'index.html', 'sw.js'].forEach(f => {
+    ['app.js', 'cards.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
       const m = fs2.readFileSync(path2.join(ROOT, f), 'utf8').match(roto);
       if (m) malos.push(f + ': ' + [...new Set(m)].join(' '));
     });
@@ -600,7 +616,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const ver = sw.match(/CACHE\s*=\s*'([^']+)'/);
     if (!ver) throw new Error('sw.js no declara la versión del cache');
     // todo archivo que la página carga tiene que estar precacheado
-    ['index.html', 'cards.js', 'engine.js', 'app.js'].forEach(f => {
+    ['index.html', 'cards.js', 'engine.js', 'app.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
       if (!sw.includes(f)) throw new Error('sw.js no precachea ' + f);
     });
     logs.push('   cache: ' + ver[1] + ' · ' + m.icons.length + ' íconos');
@@ -630,6 +646,73 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
       }
     }
     W.setNoAlcohol(false);
+  });
+
+  await run('compartir en vivo: publica la carta y el marcador', async () => {
+    W.startMode(MODES()[0]);
+    W.__fetches.length = 0;
+    W.Live.openShare();
+    for (let i = 0; i < 10; i++) await tick();
+    if (!$('livemodal').classList.contains('show')) throw new Error('no abrió la ventana');
+    if (!$('liveqr').querySelector('svg')) throw new Error('no dibujó el QR');
+    const code = $('livecode').textContent;
+    if (!W.Live.validCode(code)) throw new Error('código inválido: ' + code);
+    if (!$('livelink').value.endsWith('#ver=' + code)) throw new Error('link sin código');
+    const put = W.__fetches.filter(f => f.opt.method === 'PUT').pop();
+    if (!put) throw new Error('no publicó nada');
+    if (!put.url.includes('/salas/' + code + '.json?auth=tok1')) throw new Error('url rara: ' + put.url);
+    const snap = JSON.parse(put.opt.body);
+    if (snap.host !== 'uid1') throw new Error('la sala no quedó a nombre del host');
+    if (!snap.t || snap.t['.sv'] !== 'timestamp') throw new Error('sin marca de tiempo del servidor');
+    const enPantalla = $('gcard').querySelector('.ctext').textContent.trim();
+    if (!snap.card || snap.card.text !== enPantalla) throw new Error('la carta publicada no es la de la pantalla');
+    if (snap.players.length !== S().players.length) throw new Error('faltan jugadores');
+    // anotar sorbos vuelve a publicar
+    const antes = W.__fetches.length;
+    W.addSips(S().players[0], 3);
+    for (let i = 0; i < 10; i++) await tick();
+    const ult = W.__fetches.filter(f => f.opt.method === 'PUT').pop();
+    if (W.__fetches.length === antes) throw new Error('anotar sorbos no publicó');
+    if (JSON.parse(ult.opt.body).players[0].sips !== S().players[0].sips) throw new Error('sorbos desactualizados');
+    // lo mismo dos veces no se vuelve a mandar
+    const n = W.__fetches.length;
+    W.Live.touch();
+    for (let i = 0; i < 10; i++) await tick();
+    if (W.__fetches.length !== n) throw new Error('mandó una foto repetida');
+    logs.push('   sala ' + code + ' · ' + W.__fetches.filter(f => f.opt.method === 'PUT').length + ' publicaciones');
+    W.Live.stopShare();
+    for (let i = 0; i < 10; i++) await tick();
+    if (!W.__fetches.some(f => f.opt.method === 'DELETE')) throw new Error('no borró la sala al dejar de compartir');
+    if (W.Live.isSharing()) throw new Error('sigue compartiendo');
+    W.endGame();
+  });
+
+  await run('compartir en vivo: el espectador ve la partida y no escapa HTML', async () => {
+    W.location.hash = '#ver=K7Q2AB';
+    W.Live.boot();
+    if (!$('viewer').classList.contains('on')) throw new Error('no abrió la pantalla del espectador');
+    if (!W.__es || !W.__es.url.endsWith('/salas/K7Q2AB.json')) throw new Error('no se conectó a la sala');
+    W.__es.emit('put', { path: '/', data: {
+      v: 1, t: Date.now(), host: 'uid1', view: 'game', unit: 'sorbos',
+      mode: { em: '🥤', nm: 'Previa', c: '#ff3d7f' },
+      card: { label: 'Reto', text: 'Ana, <img src=x onerror=alert(1)> toma 2' },
+      rules: [{ txt: 'Prohibido decir sí', left: 2 }],
+      players: [{ n: 'Ana', sips: 3, c: '#ff3d7f' }, { n: 'Beto', sips: 7, out: true, c: 'red;x' }]
+    } });
+    const box = $('viewbox');
+    if (!/Ana, <img src=x/.test(box.querySelector('.ctext').textContent)) throw new Error('no mostró la carta');
+    if (box.querySelector('img')) throw new Error('el texto de la carta se inyectó como HTML');
+    if (!/Prohibido decir sí/.test(box.textContent)) throw new Error('faltan las reglas');
+    const filas = box.querySelectorAll('.prow');
+    if (filas.length !== 2 || !/Beto/.test(filas[0].textContent)) throw new Error('marcador mal ordenado');
+    if (/red;x/.test(box.innerHTML)) throw new Error('color sin validar');
+    W.__es.emit('put', { path: '/players/0/sips', data: 9 });
+    if (!/Ana/.test(box.querySelectorAll('.prow')[0].textContent)) throw new Error('no aplicó el cambio parcial');
+    W.__es.emit('put', { path: '/', data: null });
+    if (!/terminó/.test(box.textContent)) throw new Error('no avisó que la sala terminó');
+    W.Live.leaveViewer();
+    if (W.__es.readyState !== 2) throw new Error('no cerró la conexión');
+    if (!$('home').classList.contains('on')) throw new Error('no volvió al inicio');
   });
 
   console.log(logs.join('\n'));

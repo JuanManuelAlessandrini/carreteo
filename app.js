@@ -61,6 +61,8 @@ function save(){
       sound:S.sound, mix:S.mix, startedAt:S.startedAt, totalDrawn:S.totalDrawn
     }));
   }catch(e){/* modo incógnito o storage lleno: se juega igual */}
+  // si se está compartiendo en vivo, los que miran se enteran del cambio
+  if(window.Live&&Live.touch) Live.touch();
 }
 function load(){
   try{
@@ -1109,4 +1111,4 @@ function initSW(){
   }).catch(()=>{});
 }
 initSW();
-
+if(window.Live) Live.boot();
