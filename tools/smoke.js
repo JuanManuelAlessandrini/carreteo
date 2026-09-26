@@ -543,7 +543,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const fs2 = require('fs'), path2 = require('path');
     const roto = /\\U[0-9A-Fa-f]{8}/g;
     const malos = [];
-    ['app.js', 'cards.js', 'charts.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
+    ['app.js', 'agente.js', 'cards.js', 'charts.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
       const m = fs2.readFileSync(path2.join(ROOT, f), 'utf8').match(roto);
       if (m) malos.push(f + ': ' + [...new Set(m)].join(' '));
     });
@@ -553,7 +553,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
   await run('ninguna pantalla muestra codigos de emoji crudos', async () => {
     const sucias = [];
     for (const id of ['home', 'players', 'modes', 'game', 'board', 'summary',
-                      'ruleta', 'impostor', 'rey', 'mixpick', 'bomba']) {
+                      'ruleta', 'impostor', 'rey', 'mixpick', 'bomba', 'agente']) {
       if (!$(id)) continue;
       W.go(id); await tick();
       if (/U000[0-9A-Fa-f]{5}/.test($(id).textContent)) sucias.push(id);
@@ -616,7 +616,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const ver = sw.match(/CACHE\s*=\s*'([^']+)'/);
     if (!ver) throw new Error('sw.js no declara la versión del cache');
     // todo archivo que la página carga tiene que estar precacheado
-    ['index.html', 'cards.js', 'engine.js', 'app.js', 'charts.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
+    ['index.html', 'cards.js', 'engine.js', 'app.js', 'charts.js', 'agente.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
       if (!sw.includes(f)) throw new Error('sw.js no precachea ' + f);
     });
     logs.push('   cache: ' + ver[1] + ' · ' + m.icons.length + ' íconos');
@@ -740,12 +740,13 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     // impostor: la palabra va solo al espacio privado, nunca a la sala
     W.go('impostor'); W.impStart();
     for (let i = 0; i < 10; i++) await tick();
-    const priv = W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/privado/' + code)).pop();
+    const priv = W.__fetches.filter(f => f.opt.method === 'PATCH' && f.url.includes('/privado/' + code)).pop();
     if (!priv) throw new Error('no mandó los roles privados');
     const roles = JSON.parse(priv.opt.body);
-    const mio = roles[W.Live.pidOf(ana)];
-    if (!mio || !mio.imp || !mio.imp.cat) throw new Error('Ana no recibió su rol');
-    if (Object.keys(roles).length !== 1) throw new Error('mandó roles a quien no tiene celular');
+    const mio = roles[W.Live.pidOf(ana) + '/imp'];
+    if (!mio || !mio.cat) throw new Error('Ana no recibió su rol');
+    if (Object.keys(roles).some(k => !/\/imp$/.test(k))) throw new Error('el impostor tocó otra cosa que los roles: ' + Object.keys(roles));
+    if (Object.keys(roles).filter(k => roles[k]).length !== 1) throw new Error('mandó roles a quien no tiene celular');
     const IMP = ev('IMP');
     if (IMP.ps[IMP.i] && IMP.ps[IMP.i].n === ana) throw new Error('le pide pasarle el celular a quien ya lo tiene');
     for (let i = 0; i < 10; i++) await tick();
@@ -820,6 +821,114 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     // el host lo libera
     asientos.emit('put', { path: '/Beto', data: null });
     if (!box.querySelector('.vseat')) throw new Error('liberado, debería volver a elegir');
+    W.Live.leaveViewer();
+  });
+
+  await run('doble agente (host): equipos, clave solo al jefe, pista, jugadas y sorbos', async () => {
+    W.__fetches.length = 0; W.__ess = [];
+    W.Live.openShare(); W.Live.closeShare();
+    for (let i = 0; i < 10; i++) await tick();
+    const code = $('livecode').textContent;
+    W.go('agente');
+    const AG = () => ev('AG');
+    if (AG().phase !== 'setup') throw new Error('no parte en la preparación');
+    const ns = S().players.filter(p => !p.out).map(p => p.n);
+    if (AG().teams.r.length + AG().teams.a.length !== ns.length) throw new Error('equipos incompletos');
+    // mover a alguien de equipo tocando su nombre
+    const alguien = AG().teams.r[1];
+    [...$('agbox').querySelectorAll('.agname')].find(b => b.textContent === alguien).click();
+    if (!AG().teams.a.includes(alguien)) throw new Error('tocar el nombre no lo cambió de equipo');
+    W.agShuffle();
+    const jr = AG().teams.jefe.r;
+    const seats = W.__ess.filter(e => e.url.includes('/asientos/' + code)).pop();
+    seats.emit('put', { path: '/', data: { [W.Live.pidOf(jr)]: 'uidJefe', [W.Live.pidOf(AG().teams.r[1])]: 'uidAgente' } });
+    W.agStart();
+    for (let i = 0; i < 10; i++) await tick();
+    const g = AG().g;
+    const patch = W.__fetches.filter(f => f.opt.method === 'PATCH' && f.url.includes('/privado/' + code)).pop();
+    if (!patch) throw new Error('no mandó la clave');
+    const body = JSON.parse(patch.opt.body);
+    const k = body[W.Live.pidOf(jr) + '/ag'];
+    if (!k || k.key !== g.key.join(',') || k.g !== g.id) throw new Error('el jefe no recibió la clave');
+    if (body[W.Live.pidOf(AG().teams.r[1]) + '/ag'] !== null) throw new Error('a un agente con celular no se le borró la clave');
+    if ($('agbox').querySelectorAll('.agcell').length !== 25) throw new Error('el tablero no tiene 25 palabras');
+    // la sala pública no lleva la clave
+    for (let i = 0; i < 10; i++) await tick();
+    const sala = JSON.parse(W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/salas/' + code)).pop().opt.body);
+    if (!sala.ag || sala.ag.words.length !== 25) throw new Error('la sala no trae el tablero');
+    if (JSON.stringify(sala).includes(g.key.join(','))) throw new Error('la clave viajó por la sala pública');
+    // sin pista no se toca
+    $('agbox').querySelectorAll('.agcell')[0].click();
+    if (AG().g.rev.some(Boolean)) throw new Error('se pudo tocar sin pista');
+    $('agclue').value = 'playa'; W.agClueN(1); W.agGiveClue();
+    if (!AG().g.clue || AG().g.left !== 2) throw new Error('la pista no quedó');
+    const t = AG().g.turn;
+    const equipo = S().players.filter(p => AG().teams[t].includes(p.n));
+    const antes = equipo.map(p => p.sips || 0);
+    const neutra = AG().g.key.indexOf('n');
+    $('agbox').querySelectorAll('.agcell')[neutra].click();
+    if (!AG().g.rev[neutra]) throw new Error('no se descubrió la palabra');
+    if (AG().g.turn === t) throw new Error('el transeúnte no cortó el turno');
+    if (equipo.some((p, i) => p.sips !== antes[i] + 1)) throw new Error('el transeúnte no le sumó 1 a cada uno del equipo');
+    // el asesino termina la partida
+    $('agclue').value = 'fin'; W.agGiveClue();
+    $('agbox').querySelectorAll('.agcell')[AG().g.key.indexOf('x')].click();
+    if (!AG().g.winner || AG().g.how !== 'assassin') throw new Error('el asesino no terminó la partida');
+    if (!/Ganó/.test($('agbox').textContent)) throw new Error('no muestra quién ganó');
+    if (!$('agsips') || !$('agsips').querySelector('.qbtn')) throw new Error('el ganador no tiene con qué repartir');
+    W.Live.stopShare();
+    for (let i = 0; i < 10; i++) await tick();
+    W.go('modes');
+  });
+
+  await run('doble agente cooperativa: el rival simulado juega solo', async () => {
+    W.go('agente');
+    W.agSetMode('coop');
+    const AG = () => ev('AG');
+    if (AG().teams.a.length) throw new Error('la cooperativa tiene un solo equipo');
+    W.agStart();
+    if (AG().g.mode !== 'coop' || AG().g.turn !== 'r') throw new Error('no partió el equipo');
+    $('agclue').value = 'x'; W.agGiveClue();
+    const rivalAntes = ev('Agente').leftOf(AG().g, 'a');
+    $('agbox').querySelectorAll('.agcell')[AG().g.key.indexOf('n')].click();
+    if (ev('Agente').leftOf(AG().g, 'a') !== rivalAntes - 1) throw new Error('el rival no descubrió una al terminar el turno');
+    if (AG().g.turn !== 'r') throw new Error('el turno no volvió al equipo');
+    if (!/rival: 7/.test($('agbox').textContent)) throw new Error('no muestra cuánto le queda al rival');
+    W.go('modes');
+  });
+
+  await run('doble agente (celular): el QR del jefe lo sienta y ve la clave; el resto no', async () => {
+    W.__fetches.length = 0; W.__ess = [];
+    W.location.hash = '#ver=AGE222&soy=Beto';
+    W.Live.boot();
+    for (let i = 0; i < 5; i++) await tick();
+    const sala = W.__ess.find(e => /\/salas\/AGE222\.json$/.test(e.url));
+    const asientos = W.__ess.find(e => e.url.includes('/asientos/AGE222'));
+    asientos.emit('put', { path: '/', data: null });
+    for (let i = 0; i < 10; i++) await tick();
+    if (!W.__fetches.some(f => f.opt.method === 'PUT' && f.url.includes('/asientos/AGE222/Beto'))) throw new Error('el QR del jefe no lo sentó solo');
+    asientos.emit('put', { path: '/', data: { Beto: 'uid1' } });
+    const words = Array.from({ length: 25 }, (_, i) => 'p' + i);
+    const key = 'r,r,r,r,r,r,r,r,r,a,a,a,a,a,a,a,a,n,n,n,n,n,n,n,x';
+    const ag = { id: 'G1', mode: 'equipos', words, turn: 'r', clue: { w: 'playa', n: 2 }, left: 3, winner: null,
+      shown: ',,,,,,,,,,,,,,,,,,,,,,,,', rest: { r: 9, a: 8 }, teams: { r: ['Beto', 'Ana'], a: ['Cata', 'Dani'] }, jefe: { r: 'Beto', a: 'Cata' } };
+    const base = { v: 1, t: Date.now(), host: 'h', view: 'agente', unit: 'sorbos', ag,
+      players: [{ n: 'Ana', sips: 0 }, { n: 'Beto', sips: 0 }, { n: 'Cata', sips: 0 }, { n: 'Dani', sips: 0 }] };
+    sala.emit('put', { path: '/', data: base });
+    const box = $('viewbox');
+    if (box.querySelectorAll('.agcell').length !== 25) throw new Error('no ve el tablero');
+    if (box.querySelector('[class*="key"]')) throw new Error('mostró la clave antes de recibirla');
+    if (!/"playa" · 2/.test(box.textContent)) throw new Error('no ve la pista');
+    const priv = W.__ess.filter(e => e.url.includes('/privado/AGE222/Beto')).pop();
+    priv.emit('put', { path: '/', data: { ag: { g: 'G1', key } } });
+    if (box.querySelectorAll('.agcell.keyr').length !== 9 || box.querySelectorAll('.agcell.keyx').length !== 1) throw new Error('el jefe no ve la clave');
+    if (!/Eres jefe/.test(box.textContent)) throw new Error('no le avisa que es jefe');
+    // una clave de otra partida no se muestra
+    priv.emit('put', { path: '/', data: { ag: { g: 'VIEJA', key } } });
+    if (box.querySelector('.agcell.keyr')) throw new Error('mostró la clave de una partida anterior');
+    // lo descubierto se ve con su color para todos
+    sala.emit('put', { path: '/ag/shown', data: 'r,,,,,,,,,,,,,,,,,,,,,,,,' });
+    if (!box.querySelector('.agcell.rev.kr')) throw new Error('no pintó la palabra descubierta');
     W.Live.leaveViewer();
   });
 

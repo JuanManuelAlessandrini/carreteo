@@ -1,6 +1,6 @@
 # Carreteo 🎉
 
-Juego de fiesta para adultos: **653 cartas originales** repartidas en **21 modos** más **4 juegos especiales**. Funciona sin internet, sin anuncios y sin cuentas. Se instala en el celular como una app.
+Juego de fiesta para adultos: **653 cartas originales** repartidas en **21 modos** más **5 juegos especiales**. Funciona sin internet, sin anuncios y sin cuentas. Se instala en el celular como una app.
 
 Pensado para que una persona lo abra en su teléfono y hostee la mesa: se agregan los jugadores una vez, se elige un modo y la app va nombrando a quién le toca.
 
@@ -44,7 +44,19 @@ Si vuelve, el ↩ lo reincorpora — o simplemente escribe su nombre de nuevo. E
 
 Invierno y Navidad solo aparecen en su temporada. **Mix** deja elegir varios modos y los mezcla en un solo mazo.
 
-Especiales: 👑 Cuarto rey · 🕵️ Impostor · 🎡 Ruleta · 💣 La bomba.
+Especiales: 👑 Cuarto rey · 🕵️ Impostor · 🎡 Ruleta · 💣 La bomba · 🕶️ Doble agente.
+
+### 🕶️ Doble agente
+
+Dos equipos, 25 palabras y una clave que solo ven los jefes. Por turnos, cada jefe dice en voz alta **una palabra y un número** ("playa, 2") y su equipo toca en el celular del host las palabras que cree suyas: tiene número + 1 intentos (con 0 o ∞, sin tope). Gana el primero en encontrar las suyas.
+
+- **Sorbos**, que se anotan solos a todo el equipo: transeúnte 1; palabra del rival 2, y cuenta para ellos; el asesino, pierden al tiro y shot (reto sin alcohol). El que pierde toma 1 por cada palabra suya que quedó tapada, hasta 5, y el jefe ganador reparte lo mismo.
+- **Equipos** al azar y parejos, con un jefe cada uno. Tocando un nombre se cambia de equipo, y con *hacer jefe* se elige otro jefe.
+- **La clave**: si el jefe eligió su nombre en el link de 📡, la ve en su celular. Si no, el host le muestra el **QR del jefe**, que lo sienta directo. Sin celular, se mantiene presionado **👁 Clave** en el tablero. Con dos celulares basta: el del host es el tablero y los dos jefes comparten otro, porque la clave es la misma.
+- **Los demás celulares** ven el tablero en vivo con lo descubierto, la pista y los intentos, pero nunca la clave.
+- **Cooperativa** (desde 2): todos contra un rival simulado que descubre una palabra suya en cada turno. Si termina antes, pierden. Si ganan, reparten tantos sorbos como palabras le quedaban al rival.
+
+Las palabras están en `AGENTE_WORDS` de `cards.js`: `BASE` siempre, y `PICANTE` se suma en intensidad 🌶️ Picante.
 
 ### Intensidad
 
@@ -167,7 +179,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 86 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 100 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
@@ -216,6 +228,7 @@ index.html      la página y todo el CSS
 cards.js        ⭐ solo contenido: los mazos, las categorías, las reglas del rey
 engine.js       lógica pura: barajar, parsear cartas, no-repetición, turnos
 app.js          pantallas, sonidos, vibración, marcador, resumen
+agente.js       Doble agente: tablero, clave, turnos y sorbos (sin DOM)
 charts.js       gráficos del marcador: barras, la carrera y la última hora
 live.js         compartir en vivo: publica la partida en Firebase y la vista del que mira
 database.rules.json  reglas de seguridad de Firebase (se pegan a mano en la consola)
@@ -223,7 +236,7 @@ vendor/qrcode.js     generador de QR (qrcode-generator de Kazuhiko Arase, MIT)
 sw.js           caché offline (⚠️ sube la versión al publicar)
 manifest.json   para que se instale como app
 icons/          generados con tools/make_icons.py
-tests/          engine.test.js (motor) · cards.test.js (contenido) · charts.test.js (gráficos) · live.test.js (compartir)
+tests/          engine.test.js (motor) · cards.test.js (contenido) · charts.test.js (gráficos) · agente.test.js (Doble agente) · live.test.js (compartir)
 tools/smoke.js  prueba de integración: juega la app completa
 carreteo.html   la versión 1 de un solo archivo, guardada de respaldo
 ```

@@ -39,9 +39,15 @@
     for (var i = 0; i < 6; i++) s += ALFA[Math.floor(rng() * ALFA.length)];
     return s;
   }
+  /* el QR del jefe trae &soy=<asiento>: ese celular se sienta solo */
+  function soyFromHash(hash) {
+    var m = /&soy=([^&]+)$/.exec(String(hash || ''));
+    if (!m) return null;
+    try { return decodeURIComponent(m[1]) } catch (e) { return null }
+  }
   function validCode(c) { return CODE_RE.test(String(c || '')) }
   function codeFromHash(hash) {
-    var m = /^#ver=([A-Za-z0-9]{6})$/.exec(String(hash || ''));
+    var m = /^#ver=([A-Za-z0-9]{6})(?:&soy=[^&]*)?$/.exec(String(hash || ''));
     if (!m) return null;
     var c = m[1].toUpperCase();
     return validCode(c) ? c : null;
@@ -108,7 +114,7 @@
 
   var api = {
     pidOf: pidOf, tally: tally, seatedNames: seatedNames,
-    CFG: CFG, newCode: newCode, validCode: validCode, codeFromHash: codeFromHash,
+    CFG: CFG, soyFromHash: soyFromHash, newCode: newCode, validCode: validCode, codeFromHash: codeFromHash,
     viewUrl: viewUrl, applyEvent: applyEvent, asList: asList, ago: ago, STALE_MS: STALE_MS
   };
   if (typeof document === 'undefined') return api;
@@ -208,7 +214,7 @@
   /* ---------- foto del juego ----------
      Se arma leyendo lo que el host tiene en pantalla, así lo que ven los
      demás es exactamente lo mismo, con nombres y "sorbos"/"puntos". */
-  var VIEWS = { home: '🏠 En el inicio', players: '👥 Armando la mesa', modes: '🃏 Eligiendo modo', board: '🏆 Mirando el marcador', summary: '🌙 Terminando la noche', ruleta: '🎡 Ruleta', impostor: '🕵️ Impostor', rey: '👑 Cuarto rey', mixpick: '🎛️ Armando un mix', bomba: '💣 La bomba' };
+  var VIEWS = { home: '🏠 En el inicio', players: '👥 Armando la mesa', modes: '🃏 Eligiendo modo', board: '🏆 Mirando el marcador', summary: '🌙 Terminando la noche', ruleta: '🎡 Ruleta', impostor: '🕵️ Impostor', rey: '👑 Cuarto rey', mixpick: '🎛️ Armando un mix', bomba: '💣 La bomba', agente: '🕶️ Doble agente' };
   function txt(el, sel) { var n = el && el.querySelector(sel); return n ? n.textContent.trim() : null }
   function snapshot() {
     // S es el estado de app.js: los const de nivel superior se comparten
@@ -237,9 +243,19 @@
       named: view === 'game' && card ? [typeof curP1 !== 'undefined' && curP1, typeof curP2 !== 'undefined' && curP2]
         .filter(Boolean).map(function (p) { return p.n }).filter(function (n, i, a) { return a.indexOf(n) === i }) : [],
       vote: H.vote ? { id: H.vote.id, q: H.vote.q } : null,
+      ag: view === 'agente' ? agSnap() : null,
       unit: St && St.noAlcohol ? 'puntos' : 'sorbos',
       charts: chartsSnap(St)
     };
+  }
+
+  /* Doble agente: las palabras y lo ya descubierto, nunca la clave */
+  function agSnap() {
+    var G = typeof AG !== 'undefined' ? AG : null;
+    if (!G || !G.teams) return null;
+    var base = { mode: G.mode, teams: { r: G.teams.r, a: G.teams.a }, jefe: G.teams.jefe };
+    if (G.phase !== 'play' || !G.g || !window.Agente) return Object.assign(base, { setup: true });
+    return Object.assign(base, Agente.publicView(G.g));
   }
 
   /* Los gráficos viajan ya calculados y compactos: los tramos de la carrera
@@ -347,6 +363,9 @@
       H.seats = d && typeof d === 'object' ? d : {};
       renderSeats();
       if (H.imp) sendImpostor(H.imp);   // el que llega tarde también recibe su rol
+      if (H.ag && H.ag.g && !H.ag.g.winner) sendKey(H.ag);
+      // la pantalla de Doble agente muestra qué jefe ya tiene la clave
+      if (typeof AG !== 'undefined' && document.querySelector('#agente.on') && window.renderAgente && (AG.phase === 'setup' || (AG.g && AG.g.winner))) window.renderAgente();
       if (H.voteBox) renderTally();
     });
   }
@@ -356,13 +375,44 @@
     if (!H.code || !IMP || !IMP.ps) return Promise.resolve([]);
     H.imp = IMP;
     var priv = {}, names = [];
+    // PATCH con rutas: así el rol del impostor no pisa la clave de Doble
+    // agente, y los sentados que no juegan esta ronda quedan sin rol
+    Object.keys(H.seats || {}).forEach(function (pid) { priv[pid + '/imp'] = null });
     IMP.ps.forEach(function (p, i) {
       if (!seatOf(p.n)) return;
       names.push(p.n);
-      priv[pidOf(p.n)] = { imp: { r: IMP.r, cat: IMP.cat, word: i === IMP.imp ? null : IMP.word, impostor: i === IMP.imp } };
+      priv[pidOf(p.n) + '/imp'] = { r: IMP.r, cat: IMP.cat, word: i === IMP.imp ? null : IMP.word, impostor: i === IMP.imp };
     });
     if (!names.length) return Promise.resolve([]);
-    return dbWrite('PUT', '/privado/' + H.code, priv).then(function () { return names }, function () { return [] });
+    return dbWrite('PATCH', '/privado/' + H.code, priv).then(function () { return names }, function () { return [] });
+  }
+  /* La clave de Doble agente va solo a los jefes. Al resto de los
+     sentados se le borra, por si en la partida anterior fue jefe. */
+  function sendKey(G) {
+    if (!H.code || !G || !G.g) return Promise.resolve([]);
+    H.ag = G;
+    var jefes = [G.teams.jefe.r, G.teams.jefe.a].filter(Boolean), names = [], priv = {};
+    Object.keys(H.seats || {}).forEach(function (pid) { priv[pid + '/ag'] = null });
+    jefes.forEach(function (n) {
+      if (!seatOf(n)) return;
+      names.push(n);
+      priv[pidOf(n) + '/ag'] = { g: G.g.id, key: G.g.key.join(',') };
+    });
+    if (!Object.keys(priv).length) return Promise.resolve([]);
+    return dbWrite('PATCH', '/privado/' + H.code, priv).then(function () { return names }, function () { return [] });
+  }
+  function jefeQR(n) {
+    var m = $('agqrmodal');
+    if (!m) return;
+    if (!H.code) startHost(newCode());
+    var url = viewUrl(location, H.code) + '&soy=' + encodeURIComponent(n);
+    $('agqrtxt').textContent = n + ': escanea esto con tu celular. Quedas como ' + n + ' y ves la clave solo tú.';
+    var box = $('agqr');
+    if (typeof qrcode === 'function') {
+      var q = qrcode(0, 'M'); q.addData(url); q.make();
+      box.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true, alt: 'Código QR para el jefe ' + n });
+    }
+    m.classList.add('show');
   }
   function clearImpostor() {
     if (!H.imp) return;
@@ -559,6 +609,44 @@
       '<div class="sumstat"><div class="sn">' + (me.done || 0) + ' / ' + (me.skip || 0) + '</div><div class="sl">hechos / saltados</div></div></div>';
     return { top: html, after: after };
   }
+  /* Doble agente en el celular: el tablero para todos, y la clave encima
+     solo si este celular es de un jefe de esta partida. */
+  function agenteView(st) {
+    var ag = st.ag;
+    if (!ag) return '';
+    var nm = { r: 'Rojo', a: 'Azul' }, em = { r: '🔴', a: '🔵', n: '🙂', x: '💀' };
+    var teams = ag.teams || { r: [], a: [] }, jefe = ag.jefe || {};
+    var eq = function (k) { return '<div class="agteam" style="--tc:' + (k === 'r' ? '#ff3d7f' : '#59c2ff') + '"><div class="agth">' + (ag.mode === 'coop' ? '🕶️ Equipo' : em[k] + ' ' + nm[k]) + '</div>' +
+      asList(teams[k]).map(function (n) { return '<div class="agmem"><span class="agname">' + escH(n) + '</span>' + (n === jefe[k] ? '<span class="agstar on">🔑 jefe</span>' : '') + '</div>' }).join('') + '</div>' };
+    var equipos = '<div class="agteams" style="margin:12px 0">' + eq('r') + (ag.mode === 'coop' ? '' : eq('a')) + '</div>';
+    if (ag.setup) return '<div class="csub">Armando los equipos…</div>' + equipos;
+    var html = '';
+    var key = null;
+    var mine = V.priv && V.priv.ag;
+    if (mine && mine.g === ag.id && mine.key) key = String(mine.key).split(',');
+    var shown = String(ag.shown || '').split(',');
+    var words = asList(ag.words);
+    if (ag.winner) {
+      html += '<div class="impcard"><h3>' + (ag.mode === 'coop' ? (ag.winner === 'r' ? '¡Ganaron!' : 'Ganó el rival') : 'Ganó el ' + em[ag.winner] + ' ' + nm[ag.winner]) + '</h3>' +
+        '<p class="csub">' + (ag.how === 'assassin' ? 'El asesino 💀 decidió la partida.' : ag.how === 'rival' ? 'El rival encontró todas sus palabras.' : 'Encontraron todas sus palabras.') + '</p></div>';
+    } else {
+      html += '<div class="agturn" style="--tc:' + (ag.turn === 'r' ? '#ff3d7f' : '#59c2ff') + '">' + (ag.mode === 'coop' ? '🕶️ Turno del equipo' : 'Turno ' + em[ag.turn] + ' ' + nm[ag.turn]) + '</div>';
+      if (ag.clue) html += '<div class="agclue on"><div class="agcw">"' + escH(ag.clue.w) + '" · ' + (ag.clue.n === -1 ? '∞' : escH(ag.clue.n)) + '</div><div class="csub">' + (ag.left === -1 ? 'sin tope' : 'quedan ' + escH(ag.left)) + '</div></div>';
+      else html += '<div class="csub" style="margin-bottom:8px">Esperando la pista del jefe…</div>';
+    }
+    if (key) html += '<div class="vtoca" style="animation:none">🔑 Eres jefe: esta es la clave. Que nadie mire tu celular.</div>';
+    var rest = ag.rest || {};
+    html += '<div class="agcount">' + (ag.mode === 'coop' ? '<span>🕶️ faltan ' + escH(rest.r) + '</span><span>🤖 rival: ' + escH(rest.a) + '</span>'
+      : '<span style="color:#ff3d7f">🔴 ' + escH(rest.r) + '</span><span style="color:#59c2ff">🔵 ' + escH(rest.a) + '</span>') + '</div>';
+    html += '<div class="aggrid">' + words.map(function (w, i) {
+      var k = /^[ranx]$/.test(shown[i]) ? shown[i] : '';
+      var kk = key && /^[ranx]$/.test(key[i]) ? key[i] : '';
+      var largo = String(w).length > 8 ? ' largo' : '';
+      return '<div class="agcell' + largo + (k ? ' rev k' + k : '') + (!k && kk ? ' key' + kk : '') + '"><span class="agw">' + escH(w) + '</span>' +
+        (k ? '<span class="agi">' + em[k] + '</span>' : kk ? '<span class="agi">' + em[kk] + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+    return html + equipos;
+  }
   function standUpLocal() {
     V.me = null; V.priv = null;
     if (V.privS) { V.privS.close(); V.privS = null }
@@ -583,6 +671,7 @@
     document.documentElement.style.setProperty('--accent', accent ? accent.trim() : 'var(--violet)');
     var mine = personal(st, asList(st.players));
     var html = mine.top;
+    if (st.view === 'agente' && st.ag) html += agenteView(st);
     if (st.mode && st.mode.nm) html += '<div class="mname vmode">' + escH((st.mode.em ? st.mode.em + ' ' : '') + st.mode.nm) + '</div>';
     var rules = asList(st.rules);
     if (rules.length) html += '<div class="rulesbar">' + rules.map(function (r) { return '<span class="rulechip">📌 ' + escH(r.txt) + ' (' + escH(r.left) + ')</span>' }).join('') + '</div>';
@@ -646,8 +735,14 @@
     // si este celular ya estaba sentado en esta sala, sigue siendo el mismo
     var d = mem();
     if (d.seat && d.seat.code === code) { V.me = { n: d.seat.n, pid: pidOf(d.seat.n) }; watchPriv() }
+    var soy = soyFromHash(location.hash);
     V.seatsS = stream('/asientos/' + code, false, function (s) {
       V.seats = s && typeof s === 'object' ? s : {};
+      // vino por el QR del jefe: se sienta solo, si el asiento está libre
+      if (soy && !V.me) {
+        var pid = pidOf(soy), owner = V.seats[pid];
+        if (!owner || owner === myUid()) { var n = soy; soy = null; sitAs(n) } else soy = null;
+      }
       // el host lo liberó, o lo tomó otro celular
       if (V.me && V.seats[V.me.pid] !== myUid()) standUpLocal();
       renderViewer();
@@ -688,6 +783,9 @@
   api.seatOf = seatOf;
   api.sendImpostor = sendImpostor;
   api.clearImpostor = clearImpostor;
+  api.sendKey = sendKey;
+  api.jefeQR = jefeQR;
+  api.pidOf = pidOf;
   api.openVote = openVote;
   api.closeVote = closeVote;
   api._pick = function () { V.watch = false; renderViewer() };
