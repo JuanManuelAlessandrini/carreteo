@@ -68,7 +68,18 @@ El 📡 (en el inicio y arriba de cada carta) muestra un QR, un código de 6 let
 - Si el host bloquea el celular, los demás siguen viendo la última carta y un aviso de que no hay novedades. Al desbloquear se pone al día.
 - Recargar la página no corta la transmisión: retoma la misma sala. *Dejar de compartir* la borra.
 
-Por dentro usa Firebase Realtime Database (plan gratis Spark) hablándole por REST, sin SDK. La configuración está al inicio de `live.js` y las reglas de seguridad en `database.rules.json`: cualquiera con el código puede leer su sala, pero solo el celular que la creó puede escribirla, y no se pueden listar las salas.
+#### Cada uno en su celular
+
+Al abrir el link, cada uno elige **qué jugador es** (o *Solo mirar*). El primero que elige un nombre se queda con él; el host ve quiénes están conectados en la ventana del 📡. Con eso, en su celular:
+
+- **👉 ¡Te toca!** — vibra y avisa cuando la carta lo nombra.
+- **Su marcador** — sus sorbos, en qué puesto va y cuántos retos hizo o saltó.
+- **🕵️ Impostor** — ve su palabra o "eres el impostor" en su celular. El host ya no le pasa el teléfono: la app se salta a los que lo tienen y solo pide pasarlo a los que no.
+- **🗳️ Votaciones** — en las cartas de votación vota desde su celular. El voto es secreto: el host ve el conteo en la carta y la carta siguiente cierra la urna.
+
+La palabra del impostor y los votos no pasan por la sala pública: cada rol va a un espacio que solo puede leer el celular sentado en ese jugador, y los votos solo los lee el host.
+
+Por dentro usa Firebase Realtime Database (plan gratis Spark) hablándole por REST, sin SDK. La configuración está al inicio de `live.js` y las reglas de seguridad en `database.rules.json`: cualquiera con el código puede leer su sala, pero solo el celular que la creó puede escribirla, y no se pueden listar las salas. Cada celular solo puede sentarse en un asiento libre, leer su propio rol y votar por su asiento en la votación abierta.
 
 **Si cambias `database.rules.json`, hay que pegarlo a mano** en la consola de Firebase → *Realtime Database* → *Reglas* → *Publicar*. El archivo del repo no se aplica solo.
 
@@ -156,7 +167,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 82 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 86 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
