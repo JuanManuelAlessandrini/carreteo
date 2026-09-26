@@ -354,7 +354,28 @@
     if (!el) return;
     var St = typeof S !== 'undefined' ? S : null;
     var names = seatedNames(H.seats, St ? St.players : []);
-    el.textContent = names.length ? '📱 Conectados: ' + names.join(', ') : 'Cuando alguien elija quién es, aparece aquí.';
+    if (!names.length) { el.textContent = 'Cuando alguien elija quién es, aparece aquí.'; return }
+    // ✕ libera el asiento: sirve si alguien eligió el nombre equivocado
+    el.innerHTML = '<span>📱 Conectados:</span> ' + names.map(function (n) {
+      return '<span class="seatchip">' + escH(n) + '<button class="seatx" data-n="' + escH(n) + '" aria-label="Liberar a ' + escH(n) + '">✕</button></span>';
+    }).join(' ');
+    el.querySelectorAll('.seatx').forEach(function (b) { b.onclick = function () { releaseSeat(b.dataset.n) } });
+  }
+  /* El host saca a alguien de un asiento. Su celular vuelve a la lista
+     para elegir jugador; el asiento queda libre para otro. */
+  function releaseSeat(n, sinPreguntar) {
+    if (!H.code || !seatOf(n)) return Promise.resolve(false);
+    if (!sinPreguntar && typeof confirm === 'function' && !confirm('¿Liberar a ' + n + '? Su celular vuelve a elegir jugador.')) return Promise.resolve(false);
+    var pid = pidOf(n);
+    return dbWrite('DELETE', '/asientos/' + H.code + '/' + pid).then(function () {
+      if (H.seats) delete H.seats[pid];
+      renderSeats();
+      if (window.toast) window.toast(n + ' quedó libre');
+      return true;
+    }, function () {
+      if (window.toast) window.toast('No se pudo liberar a ' + n + ': revisa la conexión');
+      return false;
+    });
   }
   function watchSeats() {
     if (H.seatsS) H.seatsS.close();
@@ -784,6 +805,7 @@
   api.sendImpostor = sendImpostor;
   api.clearImpostor = clearImpostor;
   api.sendKey = sendKey;
+  api.releaseSeat = releaseSeat;
   api.jefeQR = jefeQR;
   api.pidOf = pidOf;
   api.openVote = openVote;

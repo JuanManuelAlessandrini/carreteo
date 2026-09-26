@@ -737,6 +737,16 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const ana = S().players[0].n;
     seats.emit('put', { path: '/', data: { [W.Live.pidOf(ana)]: 'uidAna' } });
     if (!/Conectados: /.test($('liveseats').textContent) || !$('liveseats').textContent.includes(ana)) throw new Error('el host no muestra quién está conectado');
+    // el ✕ libera un asiento (sin el diálogo de confirmación)
+    const realConfirm = W.confirm; W.confirm = () => true;
+    seats.emit('put', { path: '/' + W.Live.pidOf(S().players[2].n), data: 'uidEquivocado' });
+    const x = [...$('liveseats').querySelectorAll('.seatx')].find(b => b.dataset.n === S().players[2].n);
+    if (!x) throw new Error('no hay ✕ para liberar');
+    x.click();
+    for (let i = 0; i < 10; i++) await tick();
+    W.confirm = realConfirm;
+    if (!W.__fetches.some(f => f.opt.method === 'DELETE' && f.url.includes('/asientos/' + code + '/' + W.Live.pidOf(S().players[2].n) + '.json?auth='))) throw new Error('el ✕ no liberó el asiento');
+    if ($('liveseats').textContent.includes(S().players[2].n)) throw new Error('sigue apareciendo como conectado');
     // impostor: la palabra va solo al espacio privado, nunca a la sala
     W.go('impostor'); W.impStart();
     for (let i = 0; i < 10; i++) await tick();

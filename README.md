@@ -82,7 +82,7 @@ El 📡 (en el inicio y arriba de cada carta) muestra un QR, un código de 6 let
 
 #### Cada uno en su celular
 
-Al abrir el link, cada uno elige **qué jugador es** (o *Solo mirar*). El primero que elige un nombre se queda con él; el host ve quiénes están conectados en la ventana del 📡. Con eso, en su celular:
+Al abrir el link, cada uno elige **qué jugador es** (o *Solo mirar*). El primero que elige un nombre se queda con él; el host ve quiénes están conectados en la ventana del 📡. Si alguien se equivocó, lo arregla con *cambiar* en su celular, o el host lo libera con el ✕ junto a su nombre. Con eso, en su celular:
 
 - **👉 ¡Te toca!** — vibra y avisa cuando la carta lo nombra.
 - **Su marcador** — sus sorbos, en qué puesto va y cuántos retos hizo o saltó.
