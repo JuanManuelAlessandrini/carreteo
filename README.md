@@ -18,6 +18,12 @@ Debajo de cada carta hay una fila con **todos** los jugadores. Toca al que perdi
 
 La misma fila aparece en la ruleta, en el impostor y cuando explota la bomba, porque en esos casos el que pierde lo decide el juego y la app no tiene cómo saberlo sola.
 
+### Gráficos
+
+El marcador 🏆, el resumen de la noche y la vista en vivo muestran tres gráficos: el **total** de cada uno, **la carrera** (cómo fue sumando cada uno durante la noche; toca o arrastra el dedo para ver los valores en un momento) y la **última hora**, para ver quién va muy rápido y ofrecerle agua.
+
+Para la carrera, la app anota la hora de cada sorbo que se suma o resta, venga de donde venga. Ese historial se guarda con el marcador y se borra al reiniciarlo, con *Partida nueva* o cuando pasan 8 horas.
+
 ### Cuando alguien se va a dormir
 
 El botón 🛌 de la lista de jugadores lo saca de la rueda: deja de salir nombrado en las cartas, no entra en la vuelta de la bomba y no toma cuando una carta dice "todos". Pero **conserva sus sorbos** y aparece en el resumen de la noche con la hora a la que cayó, incluido quién fue el primero.
@@ -150,7 +156,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 73 tests del motor, del contenido y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 82 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
@@ -199,13 +205,14 @@ index.html      la página y todo el CSS
 cards.js        ⭐ solo contenido: los mazos, las categorías, las reglas del rey
 engine.js       lógica pura: barajar, parsear cartas, no-repetición, turnos
 app.js          pantallas, sonidos, vibración, marcador, resumen
+charts.js       gráficos del marcador: barras, la carrera y la última hora
 live.js         compartir en vivo: publica la partida en Firebase y la vista del que mira
 database.rules.json  reglas de seguridad de Firebase (se pegan a mano en la consola)
 vendor/qrcode.js     generador de QR (qrcode-generator de Kazuhiko Arase, MIT)
 sw.js           caché offline (⚠️ sube la versión al publicar)
 manifest.json   para que se instale como app
 icons/          generados con tools/make_icons.py
-tests/          engine.test.js (motor) · cards.test.js (contenido) · live.test.js (compartir)
+tests/          engine.test.js (motor) · cards.test.js (contenido) · charts.test.js (gráficos) · live.test.js (compartir)
 tools/smoke.js  prueba de integración: juega la app completa
 carreteo.html   la versión 1 de un solo archivo, guardada de respaldo
 ```
