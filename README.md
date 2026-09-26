@@ -54,9 +54,23 @@ El nivel queda guardado entre sesiones, igual que los jugadores y el marcador.
 
 El switch 🚫🍺 traduce todos los "sorbos" a "puntos" en tiempo real, también en el resumen. Los shots se convierten en retos.
 
+### Compartir en vivo
+
+El 📡 (en el inicio y arriba de cada carta) muestra un QR, un código de 6 letras y un link. Los que lo abren ven desde su celular, en tiempo real, la carta que está en pantalla, las reglas activas y el marcador. Solo miran: el que hostea sigue siendo el único que juega.
+
+- Necesita internet en los dos lados. Si se corta, el juego sigue igual en el celular del host y la transmisión se reintenta sola.
+- Si el host bloquea el celular, los demás siguen viendo la última carta y un aviso de que no hay novedades. Al desbloquear se pone al día.
+- Recargar la página no corta la transmisión: retoma la misma sala. *Dejar de compartir* la borra.
+
+Por dentro usa Firebase Realtime Database (plan gratis Spark) hablándole por REST, sin SDK. La configuración está al inicio de `live.js` y las reglas de seguridad en `database.rules.json`: cualquiera con el código puede leer su sala, pero solo el celular que la creó puede escribirla, y no se pueden listar las salas.
+
+**Si cambias `database.rules.json`, hay que pegarlo a mano** en la consola de Firebase → *Realtime Database* → *Reglas* → *Publicar*. El archivo del repo no se aplica solo.
+
 ## Agregar cartas
 
 **Todo el contenido vive en `cards.js` y es el único archivo que necesitas editar.** No hay build: guardas y recargas.
+
+> **Ojo con `npm run serve`.** "Guardas y recargas" vale si abriste `index.html` con doble clic: ahí no corre el service worker. Servida por `http://localhost`, la app instala el service worker en la primera carga y desde entonces recargar muestra la copia guardada, no tus cambios. Para verlos ahí, en Chrome abre DevTools → *Application* → *Service workers* y marca *Update on reload* (o *Bypass for network*), o sube la versión en `sw.js` y toca el aviso de versión nueva.
 
 ### Formato
 
@@ -136,7 +150,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 63 tests del motor y del contenido. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 73 tests del motor, del contenido y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
@@ -159,6 +173,14 @@ También hay una bolsa de turnos: nadie vuelve a ser el `{j}` hasta que todos ha
 
 ## Publicar una actualización
 
+**Cada vez que publiques, sube la versión en `sw.js`, aunque solo hayas cambiado `cards.js`:**
+
+```javascript
+const CACHE = 'carreteo-v2.1.1';   // ← 2.1.0 → 2.1.1
+```
+
+Después:
+
 ```bash
 npm run check                      # que esté todo verde
 git add -A
@@ -168,13 +190,7 @@ git push
 
 GitHub Pages publica solo, en un par de minutos.
 
-**Si tocaste cualquier archivo que no sea `cards.js`, sube la versión en `sw.js`:**
-
-```javascript
-const CACHE='carreteo-v2.0.1';   // ← 2.0.0 → 2.0.1
-```
-
-Los celulares guardan la app en caché. Sin cambiar ese número, quien ya la tenga instalada seguiría viendo la versión vieja. Al subirlo, la app muestra un aviso de "hay una versión nueva" que no corta la partida en curso.
+El service worker guarda todos los archivos de la app en caché, `cards.js` incluido, y los sirve desde ahí sin preguntarle a la red. Sin cambiar ese número, quien ya la tenga instalada seguiría viendo la versión vieja, cartas incluidas. Al subirlo, la app muestra un aviso de "hay una versión nueva" que no corta la partida en curso.
 
 ## Los archivos
 
@@ -183,10 +199,13 @@ index.html      la página y todo el CSS
 cards.js        ⭐ solo contenido: los mazos, las categorías, las reglas del rey
 engine.js       lógica pura: barajar, parsear cartas, no-repetición, turnos
 app.js          pantallas, sonidos, vibración, marcador, resumen
+live.js         compartir en vivo: publica la partida en Firebase y la vista del que mira
+database.rules.json  reglas de seguridad de Firebase (se pegan a mano en la consola)
+vendor/qrcode.js     generador de QR (qrcode-generator de Kazuhiko Arase, MIT)
 sw.js           caché offline (⚠️ sube la versión al publicar)
 manifest.json   para que se instale como app
 icons/          generados con tools/make_icons.py
-tests/          engine.test.js (motor) · cards.test.js (contenido)
+tests/          engine.test.js (motor) · cards.test.js (contenido) · live.test.js (compartir)
 tools/smoke.js  prueba de integración: juega la app completa
 carreteo.html   la versión 1 de un solo archivo, guardada de respaldo
 ```

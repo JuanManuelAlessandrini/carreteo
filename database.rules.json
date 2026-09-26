@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "salas": {
+      "$code": {
+        ".read": "$code.matches(/^[A-Z2-9]{6}$/)",
+        ".write": "auth != null && (!data.exists() || data.child('host').val() === auth.uid)",
+        ".validate": "$code.matches(/^[A-Z2-9]{6}$/) && newData.child('host').val() === auth.uid && newData.child('t').isNumber() && newData.child('t').val() <= now"
+      }
+    }
+  }
+}

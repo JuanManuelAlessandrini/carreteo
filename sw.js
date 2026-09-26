@@ -8,13 +8,15 @@
 //
 // Para publicar una versión nueva basta subir el número de CACHE.
 
-const CACHE = 'carreteo-v2.1.0';
+const CACHE = 'carreteo-v2.2.0';
 const ASSETS = [
   './',
   './index.html',
   './cards.js',
   './engine.js',
   './app.js',
+  './live.js',
+  './vendor/qrcode.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
