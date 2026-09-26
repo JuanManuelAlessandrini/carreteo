@@ -656,7 +656,8 @@ const SPECIALS=[
 {id:'rey',nm:'Cuarto rey',em:'👑',c:'#eab308',ds:'La baraja clásica, versión digital.'},
 {id:'impostor',nm:'Impostor',em:'🕵️',c:'#94a3b8',ds:'Uno miente. Encuéntrenlo.',min:3},
 {id:'ruleta',nm:'Ruleta',em:'🎡',c:'#e879f9',ds:'Gira y que decida el destino.'},
-{id:'bomba',nm:'La bomba',em:'💣',c:'#f97316',ds:'Pasa el celular antes de que explote.',min:3}
+{id:'bomba',nm:'La bomba',em:'💣',c:'#f97316',ds:'Pasa el celular antes de que explote.',min:3},
+{id:'agente',nm:'Doble agente',em:'🕶️',c:'#38bdf8',ds:'Pistas de una palabra, dos equipos y un asesino escondido.',min:2}
 ];
 
 /* ---------- cuarto rey ---------- */
@@ -858,7 +859,90 @@ const WHEEL_DARES=[
 MODES.find(m=>m.id==='vor').deck=TRUTH_DARE.truths.concat(TRUTH_DARE.dares);
 
 /* ---------- export para los tests (en el navegador esto se ignora) ---------- */
+/* ---------- doble agente ----------
+   Palabras sueltas para el tablero de 5x5. Sustantivos comunes, mejor si
+   tienen más de un sentido: eso es lo que hace buenas las pistas.
+   PICANTE se suma a BASE solo en intensidad 🌶️ Picante. */
+const AGENTE_WORDS={
+BASE:[
+  'ala', 'anillo', 'araña', 'árbol', 'arena', 'avión', 'azúcar', 'bala',
+  'balón', 'banco', 'bandera', 'barco', 'barra', 'bota', 'botella', 'brazo',
+  'bruja', 'burbuja', 'caballo', 'cabeza', 'cable', 'cadena', 'caja',
+  'calcetín', 'cama', 'cámara', 'campana', 'canal', 'cancha', 'cangrejo',
+  'capa', 'cara', 'carta', 'casa', 'castillo', 'cebolla', 'cerebro', 'cerveza',
+  'chaleco', 'chancho', 'chaqueta', 'chicle', 'chocolate', 'cielo', 'cine',
+  'cinta', 'clavo', 'cocina', 'cohete', 'cola', 'collar', 'columna', 'cometa',
+  'concha', 'copa', 'corazón', 'corbata', 'corona', 'cuchillo', 'cuerda',
+  'cueva', 'dedo', 'delfín', 'diamante', 'diente', 'dinosaurio', 'disco',
+  'dragón', 'ducha', 'dulce', 'edificio', 'elefante', 'enano', 'escalera',
+  'escoba', 'escudo', 'espada', 'espejo', 'esponja', 'estadio', 'estrella',
+  'fantasma', 'faro', 'fiesta', 'flecha', 'flor', 'foco', 'foto', 'fuego',
+  'fuente', 'galleta', 'gallo', 'gancho', 'garra', 'gato', 'gigante', 'globo',
+  'gol', 'gorila', 'gorro', 'grano', 'guante', 'guitarra', 'hacha', 'hielo',
+  'hierro', 'hoja', 'hormiga', 'hospital', 'hueso', 'huevo', 'iglesia', 'imán',
+  'isla', 'jabón', 'jardín', 'jaula', 'jirafa', 'joya', 'juez', 'juguete',
+  'ladrillo', 'lámpara', 'lápiz', 'león', 'libro', 'limón', 'lengua', 'llama',
+  'llave', 'lluvia', 'lobo', 'loro', 'luna', 'maleta', 'mango', 'mano',
+  'manzana', 'mapa', 'máquina', 'mar', 'marco', 'martillo', 'máscara',
+  'medalla', 'mesa', 'micro', 'miel', 'mina', 'momia', 'mono', 'montaña',
+  'moto', 'muela', 'muñeca', 'murciélago', 'música', 'nariz', 'nave', 'nieve',
+  'nube', 'nudo', 'ojo', 'ola', 'olla', 'oreja', 'oro', 'oso', 'oveja', 'pala',
+  'palo', 'paloma', 'pan', 'pantalla', 'papel', 'paraguas', 'pared', 'parque',
+  'pasto', 'pata', 'pato', 'peine', 'pelota', 'perla', 'perro', 'pez', 'piano',
+  'pie', 'piedra', 'pila', 'pino', 'pintura', 'pirata', 'piscina', 'pizza',
+  'planta', 'plátano', 'playa', 'pluma', 'pólvora', 'pozo', 'prisión', 'puente',
+  'puerta', 'pulpo', 'punto', 'queso', 'radio', 'raíz', 'rana', 'rata', 'ratón',
+  'rayo', 'red', 'regalo', 'reina', 'reloj', 'rey', 'río', 'robot', 'rosa',
+  'rueda', 'sable', 'sal', 'salsa', 'sandía', 'sapo', 'sartén', 'selva',
+  'serpiente', 'silla', 'sirena', 'sobre', 'sol', 'sombra', 'sombrero', 'sopa',
+  'submarino', 'taco', 'tambor', 'tanque', 'taza', 'teatro', 'techo',
+  'teléfono', 'tenedor', 'tesoro', 'tiburón', 'tierra', 'tigre', 'tijera',
+  'tinta', 'tiza', 'toalla', 'tomate', 'toro', 'torre', 'tortuga', 'tren',
+  'trigo', 'trompeta', 'tubo', 'tumba', 'uva', 'vaca', 'vampiro', 'vaso',
+  'vela', 'veneno', 'ventana', 'verano', 'vidrio', 'viento', 'vino', 'violín',
+  'volcán', 'yate', 'zapato', 'zorro', 'completo', 'sopaipilla', 'empanada',
+  'terremoto', 'cordillera', 'cueca', 'huaso', 'copihue', 'pudú', 'cóndor',
+  'micrero', 'carrete', 'previa', 'once', 'marraqueta', 'palta', 'humita',
+  'pebre', 'cazuela', 'manjar', 'alfajor', 'chirimoya', 'sushi', 'cumbia',
+  'reguetón', 'karaoke', 'asado', 'parrilla', 'anticucho', 'chela', 'piscola',
+  'vuelta', 'liceo', 'recreo', 'pizarra', 'mochila', 'cuaderno', 'profesor',
+  'examen', 'diploma', 'bus', 'metro', 'taxi', 'bicicleta', 'patineta',
+  'camión', 'carretera', 'semáforo', 'esquina', 'plaza', 'feria', 'mall',
+  'supermercado', 'farmacia', 'cajero', 'moneda', 'billete', 'tarjeta',
+  'cuenta', 'deuda', 'sueldo', 'jefe', 'oficina', 'reunión', 'computador',
+  'mouse', 'teclado', 'wifi', 'batería', 'cargador', 'audífono', 'parlante',
+  'celular', 'mensaje', 'video', 'meme', 'emoji', 'selfie', 'filtro', 'pantano',
+  'desierto', 'glaciar', 'geiser', 'lago', 'laguna', 'bosque', 'valle', 'cerro',
+  'volantín', 'trompo', 'emboque', 'dado', 'naipe', 'ajedrez', 'dominó',
+  'bingo', 'lotería', 'ruleta', 'casino', 'premio', 'trofeo', 'campeón',
+  'árbitro', 'penal', 'córner', 'arquero', 'camiseta', 'capitán', 'soldado',
+  'general', 'tropa', 'espía', 'agente', 'detective', 'ladrón', 'policía',
+  'bombero', 'doctor', 'enfermera', 'abogado', 'cura', 'monja', 'mago',
+  'payaso', 'chef', 'mesero', 'cantante', 'actor', 'director', 'novela',
+  'película', 'serie', 'capítulo', 'final', 'villano', 'héroe', 'princesa',
+  'príncipe', 'castor', 'ballena', 'foca', 'pingüino', 'alpaca', 'vicuña',
+  'guanaco', 'caracol', 'mariposa', 'abeja', 'mosca', 'mosquito', 'escorpión',
+  'cuervo', 'búho', 'águila', 'cisne', 'flamenco', 'pavo', 'gallina', 'pollo',
+  'tocino', 'jamón', 'salchicha', 'hamburguesa', 'papas', 'ketchup', 'mayonesa',
+  'mostaza', 'pepino', 'zanahoria', 'lechuga', 'choclo', 'poroto', 'lenteja',
+  'arroz', 'fideo', 'harina', 'levadura', 'torta', 'helado', 'flan', 'gelatina',
+  'mermelada', 'café', 'té', 'leche', 'jugo', 'agua', 'vapor', 'humo', 'ceniza',
+  'carbón', 'leña', 'chimenea', 'estufa', 'frazada', 'almohada', 'colchón',
+  'sábana', 'pijama', 'bata', 'pantufla', 'cepillo', 'pasta', 'champú',
+  'perfume', 'maquillaje', 'labial', 'uña', 'pelo', 'barba', 'bigote', 'peluca'
+],
+PICANTE:[
+  'beso', 'cucharita', 'esposas', 'látigo', 'fresa', 'crema', 'durazno',
+  'berenjena', 'cereza', 'melón', 'coco', 'pera', 'nata', 'aceite', 'masaje',
+  'espuma', 'jacuzzi', 'motel', 'cuero', 'encaje', 'liga', 'tanga', 'corsé',
+  'antifaz', 'mordisco', 'chupón', 'cuello', 'ombligo', 'espalda', 'cadera',
+  'trasero', 'pecho', 'muslo', 'tobillo', 'pies', 'manos', 'tentación', 'deseo',
+  'fantasía', 'secreto', 'amante', 'ex', 'pololo', 'match', 'cita', 'perreo',
+  'baile', 'disfraz', 'uniforme', 'vecino'
+]
+};
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { TYPES, MODES, SPECIALS, KING_RULES, KING_LAST,
-                     IMP_WORDS, WHEEL_DARES, TRUTH_DARE, BOMB_CATS };
+                     IMP_WORDS, WHEEL_DARES, TRUTH_DARE, BOMB_CATS, AGENTE_WORDS };
 }

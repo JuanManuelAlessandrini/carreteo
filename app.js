@@ -165,6 +165,7 @@ function go(id){
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
+  if(id==='agente') initAgente();
   // Salir de la pantalla apaga la mecha a propósito: si siguiera corriendo,
   // explotaría en una pantalla que nadie está mirando. Se avisa para que no
   // parezca que se perdió sola.
@@ -1087,6 +1088,188 @@ function bombBoom(){
   sfx.boom(); vib([200,80,400]);
 }
 
+
+
+/* ---------- Doble agente ----------
+   El celular del host es el tablero: ahí se anota la pista y se tocan las
+   palabras. La clave la ven los jefes en su celular (por el espacio
+   privado de compartir en vivo) o, si no hay, manteniendo presionado aquí.
+   La lógica está en agente.js.
+--------------------------------------*/
+const AG_COL={r:'#ff3d7f',a:'#59c2ff',n:'#b9a67a',x:'#0d0a14'};
+const AG_NM={r:'Rojo',a:'Azul'};
+const AG_EM={r:'🔴',a:'🔵',n:'🙂',x:'💀'};
+let AG={phase:'setup',mode:'equipos',teams:null,g:null,clueN:1};
+function agNames(){ return enJuego().map(p=>p.n) }
+function agWords(){
+  const w=AGENTE_WORDS.BASE.slice();
+  return S.intensity>=3?w.concat(AGENTE_WORDS.PICANTE):w;
+}
+function initAgente(){
+  if(AG.phase==='play'&&AG.g&&!AG.g.winner){ renderAgente(); return }   // volver no corta la partida
+  const ns=agNames();
+  // se conservan los equipos si la mesa es la misma
+  const misma=AG.teams&&ns.length===AG.teams.r.length+AG.teams.a.length&&ns.every(n=>Agente.teamOf(AG.teams,n));
+  if(!misma){
+    AG.mode=ns.length>=4?'equipos':'coop';
+    AG.teams=Agente.makeTeams(ns,AG.mode);
+  }
+  AG.phase='setup';AG.g=null;
+  renderAgente();
+}
+function agSetMode(m){ AG.mode=m; AG.teams=Agente.makeTeams(agNames(),m); renderAgente() }
+function agShuffle(){ AG.teams=Agente.makeTeams(agNames(),AG.mode); renderAgente() }
+function agTap(n){
+  // equipos: tocar cambia de equipo; en la cooperativa hay uno solo
+  if(AG.mode==='coop'){ AG.teams=Agente.setJefe(AG.teams,n); renderAgente(); return }
+  AG.teams=Agente.moveTo(AG.teams,n,Agente.teamOf(AG.teams,n)==='r'?'a':'r'); renderAgente();
+}
+function agJefe(n){ AG.teams=Agente.setJefe(AG.teams,n); renderAgente() }
+function agStart(){
+  const prob=Agente.teamsProblem(AG.teams,AG.mode);
+  if(prob){ toast(prob); return }
+  AG.g=Agente.newGame(agWords(),{mode:AG.mode});
+  AG.phase='play'; AG.clueN=1;
+  if(!S.startedAt) S.startedAt=Date.now();
+  if(window.Live) Live.sendKey(AG);
+  renderAgente();
+}
+function agJefes(){ return ['r','a'].map(k=>AG.teams.jefe[k]).filter(Boolean) }
+function agTeamList(k){
+  const jefe=AG.teams.jefe[k];
+  return `<div class="agteam" style="--tc:${AG_COL[k]}">
+    <div class="agth">${AG.mode==='coop'?'🕶️ Equipo':AG_EM[k]+' '+AG_NM[k]}</div>
+    ${AG.teams[k].map(n=>`<div class="agmem">
+      <button class="agname" onclick="agTap(${esc(JSON.stringify(n))})">${esc(n)}</button>
+      <button class="agstar${n===jefe?' on':''}" onclick="agJefe(${esc(JSON.stringify(n))})" aria-label="${esc(n)} es ${n===jefe?'el jefe':'agente: tocar para hacerlo jefe'}">${n===jefe?'🔑 jefe':'hacer jefe'}</button>
+    </div>`).join('')}
+  </div>`;
+}
+/* estado de la clave para cada jefe: en su celular, o cómo dársela */
+function agKeyPanel(){
+  const sharing=window.Live&&Live.isSharing();
+  return `<div class="agkey"><div class="qlabel">🔑 La clave la ven solo los jefes</div>
+    ${agJefes().map(n=>{
+      const tiene=sharing&&Live.seatOf(n);
+      return `<div class="agkrow"><span>${esc(n)}</span>${tiene
+        ?'<span class="agok">📱 en su celular</span>'
+        :`<button class="pill" onclick="agJefeQR(${esc(JSON.stringify(n))})">QR del jefe</button>`}</div>`;
+    }).join('')}
+    <p class="csub">Sin celular: el jefe mantiene presionado <b>👁 Clave</b> en el tablero. Basta un celular para los dos jefes: la clave es la misma.</p></div>`;
+}
+function agJefeQR(n){
+  if(!window.Live) return;
+  Live.jefeQR(n);
+}
+// elegir el número redibuja: lo escrito en la pista se guarda antes
+function agDraft(){ const i=$('agclue'); if(i) AG.draft=i.value }
+function agClueN(n){ agDraft(); AG.clueN=n; renderAgente() }
+function agGiveClue(){
+  const w=($('agclue')&&$('agclue').value||'').trim();
+  if(!w){ toast('Escribe la pista que dijo el jefe'); return }
+  AG.g=Agente.giveClue(AG.g,w,AG.clueN);
+  AG.draft=''; AG.clueN=1;
+  renderAgente();
+}
+function agPass(){
+  if(!Agente.canPass(AG.g)){ toast('Hay que intentar al menos una'); return }
+  AG.g=Agente.endTurn(AG.g);
+  sfx.tap(); renderAgente();
+}
+/* los sorbos de una jugada van a todo el equipo */
+function agApplySips(list){
+  const pal=S.noAlcohol?'puntos':'sorbos';
+  const msgs=[];
+  list.forEach(x=>{
+    const ns=AG.teams[x.team];
+    S.players.filter(p=>ns.indexOf(p.n)>=0).forEach(p=>p.sips=(p.sips||0)+x.n);
+    const quien=AG.mode==='coop'?'El equipo':`${AG_EM[x.team]} ${AG_NM[x.team]}`;
+    msgs.push(x.shot?`${quien}: ${S.noAlcohol?'reto':'shot'} por el asesino 💀`:`${quien} +${x.n} ${pal} (${x.why})`);
+  });
+  if(list.length){ save(); toast(msgs.join(' · ')) }
+}
+function agGuess(i){
+  if(!AG.g||!AG.g.clue){ toast('Primero la pista del jefe'); return }
+  const r=Agente.guess(AG.g,i);
+  if(!r.res) return;
+  AG.g=r.g;
+  const k=r.res.kind;
+  if(k==='own'){ sfx.tap(); vib(20) } else if(k==='assassin'){ sfx.timeUp(); vib([200,80,200,80,300]) } else { sfx.tick(true); vib([60,40,60]) }
+  agApplySips(r.res.sips);
+  renderAgente();
+}
+function agRevealStart(){ const g=$('aggrid'); if(g) g.classList.add('showkey') }
+function agRevealEnd(){ const g=$('aggrid'); if(g) g.classList.remove('showkey') }
+function agGrid(){
+  const g=AG.g;
+  return `<div class="aggrid" id="aggrid">${g.words.map((w,i)=>{
+    const k=g.key[i], r=g.rev[i];
+    return `<button class="agcell${w.length>8?' largo':''}${r?' rev k'+k:''}" data-k="${k}" ${r||!g.clue||g.winner?'disabled':''} onclick="agGuess(${i})" aria-label="${esc(w)}${r?' · '+({r:'rojo',a:'azul',n:'transeúnte',x:'asesino'})[k]:''}">
+      <span class="agw">${esc(w)}</span>${r?`<span class="agi">${AG_EM[k]}</span>`:''}</button>`;
+  }).join('')}</div>`;
+}
+function renderAgente(){
+  const box=$('agbox');
+  if(!box) return;
+  if(AG.phase==='setup'){
+    const n=agNames().length;
+    box.innerHTML=`<div class="impcard" style="text-align:left"><h3>¿Cómo se juega?</h3>
+      <p class="csub" style="margin-top:4px">Cada jefe ve una clave secreta con las palabras de su equipo. Por turnos da <b>una palabra y un número</b> ("playa, 2") y su equipo toca las que cree suyas. Transeúnte: 1 sorbo. Del rival: 2 y el punto para ellos. <b>El asesino</b>: pierden y ${S.noAlcohol?'reto':'shot'}. Gana el primero en encontrar todas las suyas.</p></div>
+      <div class="chips agmodes">
+        <button class="chip${AG.mode==='equipos'?' on':''}" ${n<4?'disabled':''} onclick="agSetMode('equipos')">⚔️ Equipos${n<4?' (4+)':''}</button>
+        <button class="chip${AG.mode==='coop'?' on':''}" onclick="agSetMode('coop')">🤝 Cooperativa</button>
+      </div>
+      ${AG.mode==='coop'?`<p class="csub">Todos juntos contra un rival simulado: después de cada turno, el rival descubre una de sus palabras. Si termina antes que ustedes, pierden.</p>`:`<p class="csub">Toca un nombre para cambiarlo de equipo.</p>`}
+      <div class="agteams">${agTeamList('r')}${AG.mode==='equipos'?agTeamList('a'):''}</div>
+      <button class="btn btn-ghost" onclick="agShuffle()" style="margin:10px 0">🔀 Rearmar al azar</button>
+      ${agKeyPanel()}
+      <button class="btn btn-primary" style="margin-top:12px" onclick="agStart()">Repartir tablero 🕶️</button>`;
+    return;
+  }
+  const g=AG.g, t=g.turn;
+  let top='';
+  if(g.winner){
+    const gano=AG.mode==='coop'?(g.winner==='r'?'¡Ganaron!':'Ganó el rival'):`Ganó el ${AG_EM[g.winner]} ${AG_NM[g.winner]}`;
+    const como=g.how==='assassin'?'El asesino 💀 decidió la partida.':g.how==='rival'?'El rival encontró todas sus palabras.':'Encontraron todas sus palabras.';
+    top=`<div class="impcard"><h3>${gano}</h3><p class="csub">${como}</p>
+      ${AG.mode==='coop'&&g.winner==='r'?`<p class="csub">Le quedaban ${Agente.coopScore(g)} palabras al rival: repartan ${Agente.coopScore(g)} ${S.noAlcohol?'puntos':'sorbos'}.</p>`:''}</div>
+      <div id="agsips"></div>
+      <button class="btn btn-primary" onclick="agStart()">Otra partida, mismos equipos</button>
+      <button class="btn btn-ghost" style="margin-top:8px" onclick="AG.phase='setup';renderAgente()">Cambiar equipos</button>`;
+  }else{
+    const jefe=AG.teams.jefe[t];
+    top=`<div class="agturn" style="--tc:${AG_COL[t]}">${AG.mode==='coop'?'🕶️ Turno del equipo':`Turno ${AG_EM[t]} ${AG_NM[t]}`} · jefe <b>${esc(jefe||'')}</b></div>`;
+    if(!g.clue){
+      top+=`<div class="agclue"><input id="agclue" maxlength="30" placeholder="Pista del jefe" autocomplete="off" aria-label="Pista del jefe" value="${esc(AG.draft||'')}">
+        <div class="agnums">${[0,1,2,3,4,5,6,7,8,9,-1].map(n=>`<button class="qbtn${AG.clueN===n?' named':''}" onclick="agClueN(${n})">${n===-1?'∞':n}</button>`).join('')}</div>
+        <button class="btn donebtn" onclick="agGiveClue()">Dar pista</button></div>`;
+    }else{
+      const quedan=g.left===Infinity?'sin tope':`quedan ${g.left}`;
+      top+=`<div class="agclue on"><div class="agcw">"${esc(g.clue.w)}" · ${g.clue.n===-1?'∞':g.clue.n}</div><div class="csub">${quedan} · toquen las suyas</div>
+        <button class="btn btn-ghost" onclick="agPass()" ${Agente.canPass(g)?'':'disabled'}>Pasar turno</button></div>`;
+    }
+  }
+  const cuenta=AG.mode==='coop'
+    ?`<span>🕶️ faltan ${Agente.leftOf(g,'r')}</span><span>🤖 rival: ${Agente.leftOf(g,'a')}</span>`
+    :`<span style="color:${AG_COL.r}">🔴 ${Agente.leftOf(g,'r')}</span><span style="color:${AG_COL.a}">🔵 ${Agente.leftOf(g,'a')}</span>`;
+  box.innerHTML=`${top}<div class="agcount">${cuenta}
+    <button class="holdbtn agpeek" id="agpeek">👁 Clave</button></div>
+    ${agGrid()}
+    <div style="margin-top:12px">${agKeyPanel()}</div>`;
+  const hb=$('agpeek');
+  hb.addEventListener('touchstart',e=>{e.preventDefault();agRevealStart()});
+  hb.addEventListener('touchend',agRevealEnd);
+  hb.addEventListener('mousedown',agRevealStart);
+  hb.addEventListener('mouseup',agRevealEnd);
+  hb.addEventListener('mouseleave',agRevealEnd);
+  if(g.winner){
+    // el ganador reparte: en equipos, lo que le quedaba al perdedor; en la
+    // cooperativa, las palabras que le quedaban al rival
+    const n=AG.mode==='coop'?Agente.coopScore(g):Math.max(1,Math.min(5,Agente.leftOf(g,Agente.other(g.winner))));
+    if(n>0) sipRowIn($('agsips'),n,[],AG.mode==='coop'?'repartan a quien quieran':`el jefe ${AG_EM[g.winner]} reparte`);
+  }
+  const inp=$('agclue'); if(inp) inp.addEventListener('keydown',e=>{if(e.key==='Enter')agGiveClue()});
+}
 
 /* ---------- pie de página con el conteo real ---------- */
 function renderFootnote(){
