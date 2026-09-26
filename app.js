@@ -15,6 +15,7 @@ const adapt=t=>E.adapt(t,S.noAlcohol);
 const S={
   /* se guarda entre sesiones */
   players:[], noAlcohol:false, intensity:3, sound:true, mix:[], startedAt:0, totalDrawn:0,
+  log:[],      // [hora, nombre, sorbos] de cada anotación, para los gráficos
   /* solo de esta sesión */
   mode:null, deck:[], allCards:[], idx:0, rules:[], prev:'home', drawn:0,
   kings:[], kingCount:0, timer:null,
@@ -54,11 +55,30 @@ function hora(ts){
    El historial de cartas no: cada fiesta parte con el mazo limpio.
 -------------------------------*/
 const SKEY='carreteo.v2';
+/* Historial para los gráficos. En vez de tocar cada lugar que suma
+   sorbos (cartas, ruleta, bomba, marcador, premio o castigo...), save()
+   compara con lo último que vio y anota la diferencia. */
+const LOG_CAP=2000;
+let lastSips=null;
+function trackSips(){
+  if(!lastSips){ lastSips={}; S.players.forEach(p=>lastSips[p.n]=p.sips||0); return }
+  const now=Date.now();
+  S.players.forEach(p=>{
+    const d=(p.sips||0)-(lastSips[p.n]||0);
+    if(d) S.log.push([now,p.n,d]);
+    lastSips[p.n]=p.sips||0;
+  });
+  // recortar no rompe los gráficos: lo que el log no explica queda como
+  // punto de partida de cada uno
+  if(S.log.length>LOG_CAP) S.log=S.log.slice(-LOG_CAP);
+}
+function resetLog(){ S.log=[]; lastSips=null }
 function save(){
+  trackSips();
   try{
     localStorage.setItem(SKEY,JSON.stringify({
       players:S.players, noAlcohol:S.noAlcohol, intensity:S.intensity,
-      sound:S.sound, mix:S.mix, startedAt:S.startedAt, totalDrawn:S.totalDrawn
+      sound:S.sound, mix:S.mix, startedAt:S.startedAt, totalDrawn:S.totalDrawn, log:S.log
     }));
   }catch(e){/* modo incógnito o storage lleno: se juega igual */}
   // si se está compartiendo en vivo, los que miran se enteran del cambio
@@ -84,9 +104,10 @@ function load(){
     S.mix=Array.isArray(d.mix)?d.mix:[];
     S.startedAt=+d.startedAt||0;
     S.totalDrawn=+d.totalDrawn||0;
+    S.log=Array.isArray(d.log)?d.log.filter(e=>Array.isArray(e)&&typeof e[0]==='number'&&typeof e[1]==='string'&&typeof e[2]==='number').slice(-LOG_CAP):[];
     // Si paso medio dia, es otra fiesta: sin esto el resumen de la noche
     // siguiente dice "168 h de carrete" con las cartas acumuladas.
-    if(S.startedAt&&Date.now()-S.startedAt>8*3600*1000){ S.startedAt=0;S.totalDrawn=0 }
+    if(S.startedAt&&Date.now()-S.startedAt>8*3600*1000){ S.startedAt=0;S.totalDrawn=0;S.log=[] }
   }catch(e){/* datos corruptos: se empieza de cero */}
 }
 
@@ -225,13 +246,13 @@ function borrarJugador(i){
 const delPlayer=aDormir;   // nombre viejo, por si quedo alguna referencia
 function newGame(){
   S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0;p.out=0});   // vuelven todos
-  S.recent={}; S.bag={}; S.startedAt=Date.now(); S.totalDrawn=0;
+  S.recent={}; S.bag={}; S.startedAt=Date.now(); S.totalDrawn=0; resetLog();
   renderPlayers(); save();
   toast('Partida nueva: marcador en cero, mismos jugadores 🔄');
 }
 function clearAll(){
   if(!confirm('¿Borrar los jugadores y el marcador guardados?')) return;
-  S.players=[]; S.recent={}; S.bag={}; S.startedAt=0; S.totalDrawn=0;
+  S.players=[]; S.recent={}; S.bag={}; S.startedAt=0; S.totalDrawn=0; resetLog();
   try{ localStorage.removeItem(SKEY) }catch(e){}
   renderPlayers();
   toast('Todo borrado');
@@ -578,11 +599,25 @@ function renderBoard(){
     d.querySelectorAll('.sipbtns button').forEach(b=>b.onclick=()=>{p.sips=Math.max(0,p.sips+parseInt(b.dataset.a));renderBoard();save();sfx.tap()});
     L.appendChild(d);
   });
+  renderCharts($('bcharts'));
   $('bhint').style.display=S.players.length?'none':'block';
   $('bfoot').textContent=S.players.length?(S.noAlcohol?'Puntos acumulados · el que más tiene paga una penitencia':'Sorbos estimados · si alguien va muy arriba, tócale agua 💧'):'';
 }
-function chg(n,v){const p=S.players.find(p=>p.n===n);if(p){p.sips=Math.max(0,p.sips+v);renderBoard()}}
-function resetSips(){S.players.forEach(p=>p.sips=0);renderBoard();save();toast('Marcador en cero')}
+function chg(n,v){const p=S.players.find(p=>p.n===n);if(p){p.sips=Math.max(0,p.sips+v);save();renderBoard()}}
+function resetSips(){S.players.forEach(p=>p.sips=0);resetLog();renderBoard();save();toast('Marcador en cero')}
+
+/* ---------- gráficos ---------- */
+function chartData(){
+  return {log:S.log, players:S.players, t0:S.startedAt, now:Date.now(), unit:S.noAlcohol?'puntos':'sorbos'};
+}
+function renderCharts(box){
+  if(!box||!window.Charts) return;
+  if(!S.players.some(p=>p.sips>0)){ box.innerHTML=''; return }
+  const d=chartData();
+  d.race=Charts.race(d.log,d.players,d.t0,d.now);
+  box.innerHTML=Charts.panel(d);
+  Charts.attachRace(box,d.race,d.unit);
+}
 
 /* ---------- resumen de la noche ----------
    Arma el resumen con E.summary(): el mismo objeto sirve para pintar
@@ -645,7 +680,9 @@ function renderSummary(){
     <div class="sumstat"><div class="sn">${fmtMin(s.minutes)}</div><div class="sl">de carrete</div></div>
     <div class="sumstat"><div class="sn">${s.total}</div><div class="sl">${esc(word)} repartidos</div></div>
   </div>`;
+  html+=`<div id="sumcharts"></div>`;
   box.innerHTML=html;
+  renderCharts($('sumcharts'));
 }
 
 /* rectángulo con esquinas redondeadas para el canvas, sin depender
@@ -1045,6 +1082,7 @@ renderFootnote();
 
 /* ---------- arranque ---------- */
 load();
+trackSips();   // siembra la referencia: lo que ya venía no es un cambio
 setSwitch('alcoSwitch',S.noAlcohol);
 setSwitch('sndSwitch',S.sound);
 renderChips();

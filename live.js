@@ -167,8 +167,40 @@
       accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || null,
       rules: St ? St.rules.map(function (r) { return { txt: r.txt, left: r.left } }) : [],
       players: St ? St.players.slice(0, 30).map(function (p) { return { n: p.n, sips: p.sips || 0, out: !!p.out, c: p.c } }) : [],
-      unit: St && St.noAlcohol ? 'puntos' : 'sorbos'
+      unit: St && St.noAlcohol ? 'puntos' : 'sorbos',
+      charts: chartsSnap(St)
     };
+  }
+
+  /* Los gráficos viajan ya calculados y compactos: los tramos de la carrera
+     son parejos, así que basta mandar los valores. La hora se redondea al
+     minuto; si no, la foto cambiaría a cada rato y se publicaría de más. */
+  function chartsSnap(St) {
+    if (!St || !window.Charts || !St.players.some(function (p) { return p.sips > 0 })) return null;
+    var now = Math.floor(Date.now() / 60000) * 60000;
+    var r = Charts.race(St.log, St.players, St.startedAt, now, 30);
+    return {
+      t0: r.t0, t1: r.t1,
+      race: r.series.map(function (x) { return { n: x.n, v: x.pts.map(function (q) { return q[1] }) } }),
+      rate: Charts.rate(St.log, St.players, now).map(function (x) { return { n: x.n, v: x.v } })
+    };
+  }
+  function viewerCharts(st, ps) {
+    var ch = st.charts;
+    V.race = null;
+    if (!ch || !window.Charts) return '';
+    var byName = {};
+    ps.forEach(function (p, i) { byName[p.n] = { c: Charts.chartColor(p.c, i), out: !!p.out } });
+    var race = asList(ch.race), n = race.length ? asList(race[0].v).length : 0;
+    var r = { t0: ch.t0, t1: ch.t1, series: race.map(function (x) {
+      var v = asList(x.v), m = byName[x.n] || { c: Charts.CHART[0], out: false };
+      return { n: x.n, c: m.c, out: m.out, pts: v.map(function (val, i) { return [ch.t0 + (ch.t1 - ch.t0) * i / Math.max(1, n - 1), +val || 0] }) };
+    }) };
+    V.race = r;
+    return Charts.panel({
+      players: ps, unit: st.unit, race: r,
+      rate: asList(ch.rate).map(function (x) { var m = byName[x.n] || { c: Charts.CHART[0], out: false }; return { n: x.n, v: +x.v || 0, c: m.c, out: m.out } })
+    });
   }
 
   function setStatus(s) {
@@ -307,7 +339,8 @@
         '</div>';
     }
     var ps = asList(st.players).slice().sort(function (a, b) { return (b.sips || 0) - (a.sips || 0) });
-    if (ps.length) {
+    // con gráficos, las barras ya son el marcador; la lista queda para cuando no hay
+    if (ps.length && !(st.charts && window.Charts)) {
       html += '<div class="vboard"><div class="qlabel">marcador · ' + escH(st.unit || 'sorbos') + '</div><div class="plist">' +
         ps.map(function (p) {
           var c = /^#[0-9a-f]{6}$/i.test(p.c || '') ? p.c : '#8b6cff';
@@ -315,7 +348,9 @@
             '<div class="nm">' + escH(p.n) + (p.out ? ' 🛌' : '') + '</div><div class="sipnum">' + (+p.sips || 0) + '</div></div>';
         }).join('') + '</div></div>';
     }
+    html += viewerCharts(st, asList(st.players));
     box.innerHTML = html;
+    if (V.race && window.Charts) Charts.attachRace(box, V.race, st.unit);
     var s = $('viewstatus');
     if (s) {
       var conn = V.es && V.es.readyState === 1;

@@ -543,7 +543,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const fs2 = require('fs'), path2 = require('path');
     const roto = /\\U[0-9A-Fa-f]{8}/g;
     const malos = [];
-    ['app.js', 'cards.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
+    ['app.js', 'cards.js', 'charts.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
       const m = fs2.readFileSync(path2.join(ROOT, f), 'utf8').match(roto);
       if (m) malos.push(f + ': ' + [...new Set(m)].join(' '));
     });
@@ -616,7 +616,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const ver = sw.match(/CACHE\s*=\s*'([^']+)'/);
     if (!ver) throw new Error('sw.js no declara la versión del cache');
     // todo archivo que la página carga tiene que estar precacheado
-    ['index.html', 'cards.js', 'engine.js', 'app.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
+    ['index.html', 'cards.js', 'engine.js', 'app.js', 'charts.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
       if (!sw.includes(f)) throw new Error('sw.js no precachea ' + f);
     });
     logs.push('   cache: ' + ver[1] + ' · ' + m.icons.length + ' íconos');
@@ -646,6 +646,28 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
       }
     }
     W.setNoAlcohol(false);
+  });
+
+  await run('gráficos: el log anota cada sorbo y el marcador los dibuja', async () => {
+    W.resetSips();
+    const p = S().players[0];
+    W.startMode(MODES()[0]);
+    W.addSips(p, 3);
+    W.addSips(S().players[1], 2);
+    const log = S().log;
+    if (log.length !== 2 || log[0][1] !== p.n || log[0][2] !== 3) throw new Error('log raro: ' + JSON.stringify(log));
+    W.go('board');
+    const box = $('bcharts');
+    if (!box.querySelector('.chbars')) throw new Error('sin barras en el marcador');
+    if (!box.querySelector('.chrace .chline')) throw new Error('sin carrera en el marcador');
+    // el − del marcador también queda anotado
+    $('blist').querySelector('.sipbtns button[data-a="-1"]').click();
+    if (S().log.length !== 3 || S().log[2][2] !== -1) throw new Error('la corrección no quedó en el log');
+    W.go('summary');
+    if (!$('sumcharts').querySelector('.chbars')) throw new Error('sin gráficos en el resumen');
+    W.resetSips();
+    if (S().log.length) throw new Error('reiniciar el marcador no borró el historial');
+    W.go('home');
   });
 
   await run('compartir en vivo: publica la carta y el marcador', async () => {
@@ -721,9 +743,14 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (!/Ana, <img src=x/.test(box.querySelector('.ctext').textContent)) throw new Error('no mostró la carta');
     if (box.querySelector('img')) throw new Error('el texto de la carta se inyectó como HTML');
     if (!/Prohibido decir sí/.test(box.textContent)) throw new Error('faltan las reglas');
+    if (box.querySelectorAll('.chrow').length) throw new Error('sin datos de gráficos no debería dibujarlos');
     const filas = box.querySelectorAll('.prow');
     if (filas.length !== 2 || !/Beto/.test(filas[0].textContent)) throw new Error('marcador mal ordenado');
     if (/red;x/.test(box.innerHTML)) throw new Error('color sin validar');
+    W.__es.emit('put', { path: '/charts', data: { t0: Date.now() - 600000, t1: Date.now(), race: [{ n: 'Beto', v: [0, 3, 7] }, { n: 'Ana', v: [0, 0, 3] }], rate: [{ n: 'Beto', v: 7 }, { n: 'Ana', v: 3 }] } });
+    if (box.querySelectorAll('.chrace .chline').length !== 2) throw new Error('el espectador no dibujó la carrera');
+    if (!box.querySelector('.chbars')) throw new Error('el espectador no dibujó las barras');
+    W.__es.emit('put', { path: '/charts', data: null });
     W.__es.emit('put', { path: '/players/0/sips', data: 9 });
     if (!/Ana/.test(box.querySelectorAll('.prow')[0].textContent)) throw new Error('no aplicó el cambio parcial');
     W.__es.emit('put', { path: '/', data: null });
