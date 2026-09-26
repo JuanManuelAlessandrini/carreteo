@@ -58,6 +58,8 @@ El switch 🚫🍺 traduce todos los "sorbos" a "puntos" en tiempo real, tambié
 
 **Todo el contenido vive en `cards.js` y es el único archivo que necesitas editar.** No hay build: guardas y recargas.
 
+> **Ojo con `npm run serve`.** "Guardas y recargas" vale si abriste `index.html` con doble clic: ahí no corre el service worker. Servida por `http://localhost`, la app instala el service worker en la primera carga y desde entonces recargar muestra la copia guardada, no tus cambios. Para verlos ahí, en Chrome abre DevTools → *Application* → *Service workers* y marca *Update on reload* (o *Bypass for network*), o sube la versión en `sw.js` y toca el aviso de versión nueva.
+
 ### Formato
 
 ```
