@@ -80,3 +80,33 @@ test('las reglas de la base aceptan los mismos códigos que genera la app', () =
   assert.match(sala['.write'], /auth\.uid/);
   assert.equal(rules.rules['.read'], undefined, 'la raíz no se puede leer: no se listan las salas');
 });
+
+test('pidOf deja cualquier nombre como clave válida de Firebase', () => {
+  ['Ana', 'J.P.', 'a$b#c[d]/e', 'José María', '🍺'].forEach(n => {
+    const k = L.pidOf(n);
+    assert.doesNotMatch(k, /[.$#[\]/]/, n);
+    assert.equal(decodeURIComponent(k), n);
+  });
+  assert.notEqual(L.pidOf('J.P.'), L.pidOf('JP'));
+});
+
+test('tally cuenta votos y ordena de más a menos', () => {
+  assert.deepEqual(L.tally({ a: 'Beto', b: 'Ana', c: 'Beto', d: 5 }), [{ n: 'Beto', v: 2 }, { n: 'Ana', v: 1 }]);
+  assert.deepEqual(L.tally(null), []);
+});
+
+test('seatedNames dice quiénes tienen celular', () => {
+  const ps = [{ n: 'Ana' }, { n: 'J.P.' }, { n: 'Cata' }];
+  assert.deepEqual(L.seatedNames({ [L.pidOf('J.P.')]: 'u1', Ana: 'u2' }, ps), ['Ana', 'J.P.']);
+});
+
+test('reglas: lo privado solo lo lee su asiento y los votos solo van a la urna abierta', () => {
+  const r = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+  assert.match(r.privado.$code.$pid['.read'], /asientos.*\$pid.*auth\.uid/);
+  assert.equal(r.privado.$code['.read'], undefined, 'nadie lee todos los roles juntos');
+  assert.match(r.privado.$code['.write'], /host.*auth\.uid/);
+  assert.match(r.votos.$code.$vid['.read'], /host.*auth\.uid/, 'el voto es secreto: solo lo ve el host');
+  assert.match(r.votos.$code.$vid.$pid['.write'], /asientos.*\$pid.*auth\.uid/, 'cada uno vota solo por su asiento');
+  assert.match(r.votos.$code.$vid.$pid['.validate'], /vote.*id.*\$vid/);
+  assert.match(r.asientos.$code.$pid['.write'], /!data\.exists\(\) && newData\.val\(\) === auth\.uid/, 'el primero que llega se queda el asiento');
+});

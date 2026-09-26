@@ -82,7 +82,7 @@ const dom = new JSDOM(html, {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
     };
     win.EventSource = class {
-      constructor(url) { this.url = url; this.readyState = 1; this.l = {}; win.__es = this; }
+      constructor(url) { this.url = url; this.readyState = 1; this.l = {}; win.__es = this; (win.__ess = win.__ess || []).push(this); }
       addEventListener(k, f) { (this.l[k] = this.l[k] || []).push(f); }
       emit(k, data) { (this.l[k] || []).forEach(f => f({ data: JSON.stringify(data) })); }
       close() { this.readyState = 2; }
@@ -727,11 +727,109 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     for (let i = 0; i < 5; i++) await tick();
   });
 
+  await run('por jugador (host): impostor privado y votación desde el celular', async () => {
+    W.__fetches.length = 0; W.__ess = [];
+    W.Live.openShare();
+    for (let i = 0; i < 10; i++) await tick();
+    const code = $('livecode').textContent;
+    const seats = W.__ess.filter(e => e.url.includes('/asientos/' + code)).pop();
+    if (!seats) throw new Error('el host no escucha los asientos');
+    const ana = S().players[0].n;
+    seats.emit('put', { path: '/', data: { [W.Live.pidOf(ana)]: 'uidAna' } });
+    if (!/Conectados: /.test($('liveseats').textContent) || !$('liveseats').textContent.includes(ana)) throw new Error('el host no muestra quién está conectado');
+    // impostor: la palabra va solo al espacio privado, nunca a la sala
+    W.go('impostor'); W.impStart();
+    for (let i = 0; i < 10; i++) await tick();
+    const priv = W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/privado/' + code)).pop();
+    if (!priv) throw new Error('no mandó los roles privados');
+    const roles = JSON.parse(priv.opt.body);
+    const mio = roles[W.Live.pidOf(ana)];
+    if (!mio || !mio.imp || !mio.imp.cat) throw new Error('Ana no recibió su rol');
+    if (Object.keys(roles).length !== 1) throw new Error('mandó roles a quien no tiene celular');
+    const IMP = ev('IMP');
+    if (IMP.ps[IMP.i] && IMP.ps[IMP.i].n === ana) throw new Error('le pide pasarle el celular a quien ya lo tiene');
+    for (let i = 0; i < 10; i++) await tick();
+    const salas = W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/salas/' + code));
+    if (salas.some(f => f.opt.body.includes(JSON.stringify(IMP.word)))) throw new Error('la palabra secreta viajó por la sala pública');
+    // votación
+    const vt = MODES().find(m => m.deck.some(c => /^(\[\d\])?vt\|/.test(c)));
+    W.startMode(vt);
+    let n = 0;
+    while (!/Votación/.test($('gcard').querySelector('.ctype').textContent) && n++ < 60) await avanzar(false);
+    for (let i = 0; i < 10; i++) await tick();
+    const snap = JSON.parse(W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/salas/' + code)).pop().opt.body);
+    if (!snap.vote || !snap.vote.id) throw new Error('la votación no se publicó');
+    const urna = W.__ess.filter(e => e.url.includes('/votos/' + code + '/' + snap.vote.id)).pop();
+    if (!urna) throw new Error('el host no escucha los votos');
+    urna.emit('put', { path: '/', data: { [W.Live.pidOf(ana)]: S().players[1].n } });
+    const t = $('gcard').querySelector('.vtally');
+    if (!t || !/1 de 1 votaron/.test(t.textContent) || !t.querySelector('.chbars')) throw new Error('no mostró el conteo: ' + (t && t.textContent));
+    await avanzar(false);
+    for (let i = 0; i < 10; i++) await tick();
+    const despues = JSON.parse(W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/salas/' + code)).pop().opt.body);
+    if (despues.vote) throw new Error('la votación no se cerró con la carta siguiente');
+    W.Live.stopShare();
+    for (let i = 0; i < 10; i++) await tick();
+    ['/asientos/', '/privado/', '/votos/', '/salas/'].forEach(p => {
+      if (!W.__fetches.some(f => f.opt.method === 'DELETE' && f.url.includes(p + code))) throw new Error('no limpió ' + p);
+    });
+    W.endGame();
+  });
+
+  await run('por jugador (celular): elegir quién es, te toca, su marcador, su rol y su voto', async () => {
+    W.__fetches.length = 0; W.__ess = [];
+    W.location.hash = '#ver=QQQ222';
+    W.Live.boot();
+    for (let i = 0; i < 5; i++) await tick();
+    const sala = W.__ess.find(e => /\/salas\/QQQ222\.json$/.test(e.url));
+    const asientos = W.__ess.find(e => e.url.includes('/asientos/QQQ222'));
+    if (!sala || !asientos) throw new Error('no escucha sala y asientos');
+    const base = { v: 1, t: Date.now(), host: 'h', view: 'game', unit: 'sorbos', mode: { em: '', nm: 'Previa', c: '#ff3d7f' },
+      card: { label: 'Reto', text: 'Beto, di un trabalenguas o toma 2' }, named: ['Beto'],
+      players: [{ n: 'Ana', sips: 3, c: '#ff3d7f', done: 2, skip: 1 }, { n: 'Beto', sips: 7, c: '#ffb24d' }, { n: 'Cata', sips: 1, c: '#8b6cff', out: true }] };
+    asientos.emit('put', { path: '/', data: { Ana: 'otroCel' } });
+    sala.emit('put', { path: '/', data: base });
+    const box = $('viewbox');
+    const opciones = [...box.querySelectorAll('.vseat')];
+    if (opciones.length !== 2) throw new Error('debería ofrecer a los 2 que están en la mesa, no al que se acostó');
+    if (!opciones.find(b => b.dataset.n === 'Ana').disabled) throw new Error('Ana está tomada y se puede elegir igual');
+    opciones.find(b => b.dataset.n === 'Beto').click();
+    for (let i = 0; i < 10; i++) await tick();
+    const put = W.__fetches.find(f => f.opt.method === 'PUT' && f.url.includes('/asientos/QQQ222/Beto'));
+    if (!put || JSON.parse(put.opt.body) !== 'uid1') throw new Error('no reclamó el asiento con su uid');
+    if (!W.__ess.some(e => e.url.includes('/privado/QQQ222/Beto.json?auth='))) throw new Error('no escucha su espacio privado');
+    asientos.emit('put', { path: '/Beto', data: 'uid1' });
+    if (!/Eres Beto/.test(box.textContent)) throw new Error('no dice quién es');
+    if (!box.querySelector('.vtoca')) throw new Error('no avisó que le toca');
+    if (!/7/.test(box.querySelector('.vmine').textContent) || !/1°/.test(box.querySelector('.vmine').textContent)) throw new Error('marcador personal raro');
+    // impostor
+    const priv = W.__ess.filter(e => e.url.includes('/privado/QQQ222/Beto')).pop();
+    priv.emit('put', { path: '/', data: { imp: { r: 1, cat: 'Comidas', word: 'Completo', impostor: false } } });
+    if (/Completo/.test(box.textContent)) throw new Error('mostró la palabra fuera del impostor');
+    sala.emit('put', { path: '/view', data: 'impostor' });
+    if (!/Completo/.test(box.querySelector('.impword').textContent)) throw new Error('no mostró la palabra secreta');
+    // votar
+    sala.emit('put', { path: '/', data: Object.assign({}, base, { named: [], vote: { id: 'VOTO1234', q: '¿Quién?' } }) });
+    const b = [...box.querySelectorAll('.vvbtn')].find(x => x.dataset.n === 'Ana');
+    if (!b) throw new Error('no aparecen los botones para votar');
+    b.click();
+    for (let i = 0; i < 10; i++) await tick();
+    const voto = W.__fetches.find(f => f.opt.method === 'PUT' && f.url.includes('/votos/QQQ222/VOTO1234/Beto'));
+    if (!voto || JSON.parse(voto.opt.body) !== 'Ana') throw new Error('no mandó el voto');
+    if (!/Votaste por Ana/.test(box.textContent)) throw new Error('no confirmó el voto');
+    // el host lo libera
+    asientos.emit('put', { path: '/Beto', data: null });
+    if (!box.querySelector('.vseat')) throw new Error('liberado, debería volver a elegir');
+    W.Live.leaveViewer();
+  });
+
   await run('compartir en vivo: el espectador ve la partida y no escapa HTML', async () => {
     W.location.hash = '#ver=K7Q2AB';
     W.Live.boot();
     if (!$('viewer').classList.contains('on')) throw new Error('no abrió la pantalla del espectador');
-    if (!W.__es || !W.__es.url.endsWith('/salas/K7Q2AB.json')) throw new Error('no se conectó a la sala');
+    W.__es = W.__ess.filter(e => /\/salas\/K7Q2AB\.json$/.test(e.url)).pop();
+    if (!W.__es) throw new Error('no se conectó a la sala');
+    W.Live._watch();
     W.__es.emit('put', { path: '/', data: {
       v: 1, t: Date.now(), host: 'uid1', view: 'game', unit: 'sorbos',
       mode: { em: '🥤', nm: 'Previa', c: '#ff3d7f' },

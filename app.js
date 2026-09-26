@@ -368,6 +368,7 @@ let avanzando=false,animT=null;
 function clearAnim(){ if(animT){clearTimeout(animT);animT=null} avanzando=false }
 function showCard(raw,forceP1){
   clearTimer();
+  if(window.Live) Live.closeVote();   // la carta anterior pudo abrir una votación
   if(S.mode&&!S.mode.pick) S.recent[S.mode.id]=E.pushRecent(S.recent[S.mode.id],raw,E.RECENT_CAP);
   sfx.card(); vib(12);
   const c=parseCard(raw);curCard=c;
@@ -442,6 +443,8 @@ function showCard(raw,forceP1){
       }
     },1000);
   }
+  // votación: los que eligieron jugador en su celular votan desde ahí
+  if(c.k==='vt'&&window.Live&&Live.isSharing()) Live.openVote(w,card.querySelector('.ctext').textContent);
   renderQuick(txt,c,p1,p2);
   renderRules();
   S.drawn++;S.totalDrawn++;$('gcount').textContent=`carta ${S.drawn}`;
@@ -542,7 +545,7 @@ function renderRules(){
     b.appendChild(c);
   });
 }
-function endGame(){clearTimer();clearAnim();go('modes')}
+function endGame(){clearTimer();clearAnim();if(window.Live)Live.closeVote();go('modes')}
 
 /* ---------- timer ---------- */
 function clearTimer(){if(S.timer){clearInterval(S.timer);S.timer=null}}
@@ -831,20 +834,34 @@ function impStart(){
   const cats=Object.keys(IMP_WORDS),cat=rnd(cats);
   // se congela la mesa al repartir: si alguien se va a acostar a mitad de
   // ronda, los indices no se corren y el impostor sigue siendo el mismo
-  IMP={cat,word:rnd(IMP_WORDS[cat]),ps,imp:Math.floor(Math.random()*ps.length),i:0};
+  IMP={cat,word:rnd(IMP_WORDS[cat]),ps,imp:Math.floor(Math.random()*ps.length),i:0,r:Date.now(),phones:[]};
+  // Los que eligieron jugador en su celular ven el rol ahí: no hace falta
+  // pasarles el teléfono. Si el envío falla, se juega como siempre.
+  if(window.Live&&Live.isSharing()){
+    const ronda=IMP;
+    $('impbox').innerHTML=`<div class="impcard"><h3>Repartiendo roles…</h3></div>`;
+    Promise.race([Live.sendImpostor(ronda),new Promise(r=>setTimeout(()=>r([]),5000))]).then(names=>{
+      if(IMP!==ronda) return;
+      ronda.phones=names||[];
+      impReveal();
+    });
+    return;
+  }
   impReveal();
 }
 function impReveal(){
   const box=$('impbox');
+  while(IMP.i<IMP.ps.length&&IMP.phones&&IMP.phones.indexOf(IMP.ps[IMP.i].n)>=0) IMP.i++;
   if(IMP.i>=IMP.ps.length){
     box.innerHTML=`<div class="impcard"><h3>¡A debatir! 🗣️</h3>
-    <p style="color:var(--muted);font-size:14px;line-height:1.6">Categoría: <b style="color:var(--mango)">${IMP.cat}</b>.<br>Una pista por cabeza, después voten en voz alta.</p></div>
+    <p style="color:var(--muted);font-size:14px;line-height:1.6">Categoría: <b style="color:var(--mango)">${IMP.cat}</b>.<br>Una pista por cabeza, después voten en voz alta.</p>
+    ${IMP.phones&&IMP.phones.length?`<p style="color:var(--muted);font-size:13px;margin-top:8px">📱 Lo vieron en su celular: ${IMP.phones.map(esc).join(', ')}</p>`:''}</div>
     <button class="btn btn-ghost" onclick="impRevealImp()" style="margin-bottom:10px">Revelar al impostor 👀</button>
     <button class="btn btn-primary" onclick="impStart()">Otra ronda</button>`;
     return;
   }
   const p=IMP.ps[IMP.i];
-  box.innerHTML=`<div class="impcard"><h3>Pásale el cel a</h3><div class="impword">${esc(p.n)}</div>
+  box.innerHTML=`${IMP.phones&&IMP.phones.length?`<div class="qlabel">📱 ${IMP.phones.map(esc).join(', ')} ya lo ven en su celular</div>`:''}<div class="impcard"><h3>Pásale el cel a</h3><div class="impword">${esc(p.n)}</div>
   <p style="color:var(--muted);font-size:13px">Que nadie más mire 👀</p></div>
   <button class="holdbtn" id="holdb">Mantén presionado para ver tu rol</button>
   <button class="btn btn-primary" id="impnext" style="margin-top:12px;display:none" onclick="IMP.i++;impReveal()">Listo, siguiente →</button>`;
