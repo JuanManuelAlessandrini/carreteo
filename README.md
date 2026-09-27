@@ -138,7 +138,7 @@ Por dentro usa Firebase Realtime Database (plan gratis Spark) hablándole por RE
 | Código | Etiqueta | Notas |
 |---|---|---|
 | `r` | Reto | |
-| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`, y con un segundo `§`, un dato curioso que aparece bajo la respuesta: `pregunta§respuesta§dato`. Arranca un cronómetro de 20s y al acabarse revela la respuesta sola; `p30` le da 30 segundos. |
+| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`, y con un segundo `§`, un dato curioso que aparece bajo la respuesta: `pregunta§respuesta§dato`. Arranca un cronómetro de 20s y al acabarse revela la respuesta sola; `p30` le da 30 segundos. Al revelar, la app pregunta si acertó: **acertar regala** los sorbos que dice la respuesta (se tocan de a uno a quién) y **fallar los toma**. |
 | `yn` | Yo nunca | |
 | `rg` | Regla nueva | `rg3` dura 3 rondas y se muestra en la barra de reglas activas. |
 | `vt` | Votación | |

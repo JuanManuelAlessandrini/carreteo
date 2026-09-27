@@ -358,9 +358,21 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (!ans) throw new Error('nunca revelo la respuesta');
     if (!ans.textContent.trim()) throw new Error('revelo una respuesta vacia');
     if ($('cwidget').querySelector('.timerbig')) throw new Error('el cronometro quedo en pantalla');
-    const lab = $('quickadd').querySelector('.qlabel').textContent;
-    const pide = (ans.textContent.match(/(\d+) sorbo/) || [])[1];
-    if (pide && !lab.includes('+' + pide + ' ')) throw new Error('la respuesta dice ' + pide + ' sorbos y la fila anota: ' + lab);
+    // acertó o falló: la cantidad sale de la respuesta ("Fallo = 2 sorbos")
+    const pide = +((ans.textContent.match(/(\d+) sorbo/) || [])[1] || 1);
+    if (!$('tvok') || !$('tvko')) throw new Error('no pregunta si acertó');
+    if (!$('tvko').textContent.includes('toma ' + pide)) throw new Error('fallar no toma lo que dice la respuesta: ' + $('tvko').textContent);
+    // acertó: regala de a uno, a otros, hasta completar
+    $('tvok').click();
+    const antes = S().players.reduce((t, p) => t + (p.sips || 0), 0);
+    for (let k = 0; k < pide; k++) {
+      const b = $('quickadd').querySelector('.qbtn');
+      if (!b) throw new Error('se acabaron los botones antes de regalar todo');
+      b.click();
+    }
+    const despues = S().players.reduce((t, p) => t + (p.sips || 0), 0);
+    if (despues - antes !== pide) throw new Error('regaló ' + (despues - antes) + ' en vez de ' + pide);
+    if ($('quickadd').querySelector('.qbtn') || !/regalados/.test($('quickadd').textContent)) throw new Error('siguió dejando regalar');
     const dato = $('cwidget').querySelector('.funfact');
     if (!dato || !/^💡 \S/.test(dato.textContent)) throw new Error('no apareció el dato curioso bajo la respuesta');
     if (ev('Live')._snapshot().card.fun !== dato.textContent) throw new Error('el dato curioso no viaja a la vista en vivo');
