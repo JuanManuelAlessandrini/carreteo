@@ -1,6 +1,6 @@
 # Carreteo 🎉
 
-Juego de fiesta para adultos: **653 cartas originales** repartidas en **21 modos** más **5 juegos especiales**. Funciona sin internet, sin anuncios y sin cuentas. Se instala en el celular como una app.
+Juego de fiesta para adultos: **743 cartas originales** repartidas en **21 modos** más **6 juegos especiales**. Funciona sin internet, sin anuncios y sin cuentas. Se instala en el celular como una app.
 
 Pensado para que una persona lo abra en su teléfono y hostee la mesa: se agregan los jugadores una vez, se elige un modo y la app va nombrando a quién le toca.
 
@@ -34,7 +34,7 @@ Si vuelve, el ↩ lo reincorpora — o simplemente escribe su nombre de nuevo. E
 
 | | | |
 |---|---|---|
-| 🥤 Previa · 32 | 🍸 Bar · 30 | 🧠 Trivia · 30 |
+| 🥤 Previa · 32 | 🍸 Bar · 30 | 🧠 Trivia · 120 |
 | 🎭 Mímica · 30 | 📼 90's · 29 | 🎓 Universidad · 29 |
 | 💪 Fit · 28 | 🤪 Locura · 31 | ⚡ Conflicto · 30 |
 | 💀 Muerte súbita · 28 | ⚔️ Versus · 29 | 🙊 Nunca nunca · 31 |
@@ -44,7 +44,19 @@ Si vuelve, el ↩ lo reincorpora — o simplemente escribe su nombre de nuevo. E
 
 Invierno y Navidad solo aparecen en su temporada. **Mix** deja elegir varios modos y los mezcla en un solo mazo.
 
-Especiales: 👑 Cuarto rey · 🕵️ Impostor · 🎡 Ruleta · 💣 La bomba · 🕶️ Doble agente.
+Especiales: 👑 Cuarto rey · 🕵️ Impostor · 🎡 Ruleta · 💣 La bomba · 🕶️ Doble agente · 🃏 Fuck the Dealer.
+
+### 🃏 Fuck the Dealer
+
+El clásico de cartas, con el celular como mazo. El que está a la izquierda del dealer dice un número (el palo no importa, el As vale 1):
+
+- Si acierta a la primera, el **dealer toma 5**.
+- Si no, la app dice **más alto** o **más bajo** y tiene un segundo intento: si acierta, el **dealer toma 2**.
+- Si falla los dos, **toma él la diferencia** entre su número y la carta, con un máximo de 5 para que un As contra un Rey no sean 12 sorbos.
+- Si el dealer gana **3 seguidas**, pasa el mazo al de su izquierda.
+- Cada carta queda a la vista: bajo cada número se ve cuántas quedan, y los que ya salieron cuatro veces se apagan.
+
+Reglas según [drinkinggames.co.uk](https://www.drinkinggames.co.uk/fuck-the-dealer-drinking-game.php) y [Drinking Games Bible](https://drinkinggamesbible.com/fuck-the-dealer-drinking-game/); las fuentes varían entre 4 y 5 sorbos para el primer acierto. El tope de 5 es nuestro.
 
 ### 🕶️ Doble agente
 
@@ -186,7 +198,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 102 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 111 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
@@ -201,7 +213,7 @@ npm run serve     # http://localhost:8080
 
 Esto es lo que arregla el problema clásico de este tipo de juegos. `engine.js` recuerda las cartas ya vistas de cada modo durante la sesión. Al armar el mazo pone primero, barajadas, las que no han salido; y al final las vistas hace poco, **ordenadas de más antigua a más reciente**. Ese orden es lo que da la garantía: la última que salió es la última en volver.
 
-La ventana es `min(20, cartas − 5)`, así que en un modo de 30 cartas no verás una repetida antes de 20 turnos. Los mazos chicos siempre conservan algo de sorpresa.
+La ventana es 2/3 del mazo, al menos 20 y nunca más que `cartas − 5`: en un modo de 30 cartas no verás una repetida antes de 20 turnos, y en Trivia (120) antes de 80. Los mazos chicos siempre conservan algo de sorpresa.
 
 El historial es **solo de la sesión**: si cierras la app, empieza limpio. Los jugadores y el marcador sí se guardan.
 
@@ -235,6 +247,7 @@ index.html      la página y todo el CSS
 cards.js        ⭐ solo contenido: los mazos, las categorías, las reglas del rey
 engine.js       lógica pura: barajar, parsear cartas, no-repetición, turnos
 app.js          pantallas, sonidos, vibración, marcador, resumen
+dealer.js       Fuck the Dealer: mazo, pistas, sorbos y racha del dealer (sin DOM)
 agente.js       Doble agente: tablero, clave, turnos y sorbos (sin DOM)
 charts.js       gráficos del marcador: barras, la carrera y la última hora
 live.js         compartir en vivo: publica la partida en Firebase y la vista del que mira
@@ -243,7 +256,7 @@ vendor/qrcode.js     generador de QR (qrcode-generator de Kazuhiko Arase, MIT)
 sw.js           caché offline (⚠️ sube la versión al publicar)
 manifest.json   para que se instale como app
 icons/          generados con tools/make_icons.py
-tests/          engine.test.js (motor) · cards.test.js (contenido) · charts.test.js (gráficos) · agente.test.js (Doble agente) · live.test.js (compartir)
+tests/          engine.test.js (motor) · cards.test.js (contenido) · charts.test.js (gráficos) · agente.test.js (Doble agente) · dealer.test.js (Fuck the Dealer) · live.test.js (compartir)
 tools/smoke.js  prueba de integración: juega la app completa
 carreteo.html   la versión 1 de un solo archivo, guardada de respaldo
 ```

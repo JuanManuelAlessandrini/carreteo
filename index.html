@@ -305,6 +305,15 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .chlegend i,.chtip i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .chtip{position:absolute;top:0;left:0;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:12px;color:var(--ink);display:flex;flex-direction:column;gap:2px;pointer-events:none}
 .chtip[hidden]{display:none}
+/* fuck the dealer */
+#dealer .gcard{margin-bottom:12px}
+.dranks{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px}
+.drank{background:var(--surface2);border:1px solid var(--line);border-radius:12px;color:var(--ink);font-family:'Anton';font-size:22px;padding:8px 0 4px;display:flex;flex-direction:column;align-items:center;line-height:1}
+.drank small{font-family:inherit;font-size:10px;color:var(--muted);margin-top:4px;font-weight:400;font-family:system-ui}
+.drank[disabled]{opacity:.28}
+.dinfo{display:flex;gap:14px;align-items:center;font-size:13px;color:var(--muted);margin:4px 0 12px}
+.dlast{font-family:'Anton';font-size:18px;color:var(--ink)}
+.dlast.red{color:var(--pink)}
 /* doble agente */
 .agmodes{margin:12px 0 6px}
 .agmodes .chip[disabled]{opacity:.45}
@@ -444,7 +453,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
       </div>
       <!-- renderFootnote() recalcula estos números al cargar; esto es lo que
            se ve sin JS, y un test verifica que coincida con el mazo real -->
-      <div class="footnote" id="foot">653 cartas originales · 26 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
+      <div class="footnote" id="foot">743 cartas originales · 27 modos · funciona sin internet una vez cargado.<br>Bebe con responsabilidad. Nada de esto es obligatorio: saltar siempre es opción.</div>
     </div>
   </section>
 
@@ -568,6 +577,16 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
     <div class="fill" id="agbox"></div>
   </section>
 
+  <!-- FUCK THE DEALER -->
+  <section class="screen" id="dealer">
+    <div class="topbar">
+      <button class="back" onclick="go('modes')" aria-label="Volver a los modos">←</button>
+      <h2>Fuck the Dealer</h2>
+      <button class="pill" onclick="go('board')" aria-label="Ver marcador de sorbos">🏆</button>
+    </div>
+    <div class="fill" id="dealerbox"></div>
+  </section>
+
   <!-- CUARTO REY -->
   <section class="screen" id="rey">
     <div class="topbar">
@@ -646,6 +665,7 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 <script src="engine.js"></script>
 <script src="charts.js"></script>
 <script src="agente.js"></script>
+<script src="dealer.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script src="live.js"></script>
 <script src="app.js"></script>

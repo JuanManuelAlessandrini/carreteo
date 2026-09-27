@@ -123,6 +123,10 @@ test('windowSize: 20 para mazos grandes, menos para chicos', () => {
   assert.strictEqual(E.windowSize(14), 9);
   assert.strictEqual(E.windowSize(5), 0);
   assert.strictEqual(E.windowSize(3), 0);
+  // los mazos grandes recuerdan más: 2/3 de las cartas
+  assert.strictEqual(E.windowSize(120), 80);
+  assert.strictEqual(E.windowSize(60), 40);
+  assert.ok(E.RECENT_CAP >= E.windowSize(250), 'la memoria alcanza para la ventana');
 });
 
 test('buildDeck: devuelve todas las cartas, sin perder ni duplicar', () => {

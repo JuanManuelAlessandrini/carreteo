@@ -219,7 +219,7 @@
   /* ---------- foto del juego ----------
      Se arma leyendo lo que el host tiene en pantalla, así lo que ven los
      demás es exactamente lo mismo, con nombres y "sorbos"/"puntos". */
-  var VIEWS = { home: '🏠 En el inicio', players: '👥 Armando la mesa', modes: '🃏 Eligiendo modo', board: '🏆 Mirando el marcador', summary: '🌙 Terminando la noche', ruleta: '🎡 Ruleta', impostor: '🕵️ Impostor', rey: '👑 Cuarto rey', mixpick: '🎛️ Armando un mix', bomba: '💣 La bomba', agente: '🕶️ Doble agente' };
+  var VIEWS = { home: '🏠 En el inicio', players: '👥 Armando la mesa', modes: '🃏 Eligiendo modo', board: '🏆 Mirando el marcador', summary: '🌙 Terminando la noche', ruleta: '🎡 Ruleta', impostor: '🕵️ Impostor', rey: '👑 Cuarto rey', mixpick: '🎛️ Armando un mix', bomba: '💣 La bomba', agente: '🕶️ Doble agente', dealer: '🃏 Fuck the Dealer' };
   function txt(el, sel) { var n = el && el.querySelector(sel); return n ? n.textContent.trim() : null }
   function snapshot() {
     // S es el estado de app.js: los const de nivel superior se comparten
@@ -228,7 +228,7 @@
     var on = document.querySelector('.screen.on');
     var view = on ? on.id : 'home';
     var card = null;
-    var cardEl = view === 'game' ? $('gcard') : view === 'rey' ? $('reycard') : null;
+    var cardEl = view === 'game' ? $('gcard') : view === 'rey' ? $('reycard') : view === 'dealer' ? $('dcard') : null;
     if (cardEl) {
       card = { label: txt(cardEl, '.ctype'), text: txt(cardEl, '.ctext'), ans: txt(cardEl, '.answer'), sub: txt(cardEl, '.csub') };
       if (!card.text) card = null;
