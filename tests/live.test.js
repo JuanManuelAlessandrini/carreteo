@@ -110,3 +110,21 @@ test('reglas: lo privado solo lo lee su asiento y los votos solo van a la urna a
   assert.match(r.votos.$code.$vid.$pid['.validate'], /vote.*id.*\$vid/);
   assert.match(r.asientos.$code.$pid['.write'], /!data\.exists\(\) && newData\.val\(\) === auth\.uid/, 'el primero que llega se queda el asiento');
 });
+
+test('reglas: solo quien tiene la clave crea salas, y la clave nunca está en el repo', () => {
+  const r = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+  assert.match(r.salas.$code['.write'], /root\.child\('hosts'\)\.child\(auth\.uid\)\.exists\(\)/);
+  const h = r.hosts.$uid['.write'];
+  assert.match(h, /\$uid === auth\.uid/, 'cada uno se anota solo a sí mismo');
+  assert.match(h, /newData\.val\(\) === '__CLAVE_HOST__'/, 'en el repo va el marcador, la clave real se pone solo en la consola');
+  assert.equal(r.hosts['.read'], undefined);
+  assert.equal(r.hosts.$uid['.read'], undefined, 'nadie lee la lista de hosts');
+});
+
+test('reglas: una sala sin novedades en 12 horas ya no se puede leer', () => {
+  const r = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+  assert.match(r.salas.$code['.read'], /now - 43200000/);
+  assert.match(r.asientos.$code['.read'], /now - 43200000/);
+  assert.match(r.asientos.$code.$pid['.validate'], /now - 43200000/, 'no se sienta nadie en una sala vieja');
+  assert.ok(L.ROOM_TTL <= 12 * 3600 * 1000, 'la app no retoma salas que las reglas ya no sirven');
+});

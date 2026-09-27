@@ -2,18 +2,18 @@
   "rules": {
     "salas": {
       "$code": {
-        ".read": "$code.matches(/^[A-Z2-9]{6}$/)",
-        ".write": "auth != null && (!data.exists() || data.child('host').val() === auth.uid)",
+        ".read": "$code.matches(/^[A-Z2-9]{6}$/) && data.child('t').val() > now - 43200000",
+        ".write": "auth != null && root.child('hosts').child(auth.uid).exists() && (!data.exists() || data.child('host').val() === auth.uid)",
         ".validate": "$code.matches(/^[A-Z2-9]{6}$/) && newData.child('host').val() === auth.uid && newData.child('t').isNumber() && newData.child('t').val() <= now"
       }
     },
     "asientos": {
       "$code": {
-        ".read": "$code.matches(/^[A-Z2-9]{6}$/)",
+        ".read": "$code.matches(/^[A-Z2-9]{6}$/) && root.child('salas').child($code).child('t').val() > now - 43200000",
         ".write": "auth != null && !newData.exists() && root.child('salas').child($code).child('host').val() === auth.uid",
         "$pid": {
           ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()) || (!newData.exists() && root.child('salas').child($code).child('host').val() === auth.uid))",
-          ".validate": "newData.isString() && root.child('salas').child($code).exists() && $pid.length <= 100"
+          ".validate": "newData.isString() && root.child('salas').child($code).child('t').val() > now - 43200000 && $pid.length <= 100"
         }
       }
     },
@@ -35,6 +35,11 @@
             ".validate": "newData.isString() && newData.val().length <= 40 && root.child('salas').child($code).child('vote').child('id').val() === $vid"
           }
         }
+      }
+    },
+    "hosts": {
+      "$uid": {
+        ".write": "auth != null && $uid === auth.uid && newData.val() === '__CLAVE_HOST__'"
       }
     }
   }

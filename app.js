@@ -161,11 +161,15 @@ function go(id){
   if(id==='players') renderPlayers();
   if(id==='modes') renderModes();
   if(id==='board') renderBoard();
-  if(id==='summary') renderSummary();
+  if(id==='summary'){
+    renderSummary();
+    // terminar la noche cierra la sala en vivo: el QR de hoy deja de servir
+    if(window.Live&&Live.isSharing()&&confirm('¿Cerrar la sala en vivo? Los demás dejan de ver la partida y el QR deja de servir.')) Live.stopShare();
+  }
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
-  if(id==='agente') initAgente();
+  if(id==='agente') initAgente(); else if(typeof AG!=='undefined') agPause();
   // Salir de la pantalla apaga la mecha a propósito: si siguiera corriendo,
   // explotaría en una pantalla que nadie está mirando. Se avisa para que no
   // parezca que se perdió sola.
@@ -173,6 +177,21 @@ function go(id){
   else { if(BOMB.running) toast('Mecha apagada al salir'); clearBomb() }
 }
 function closeGate(){$('gate').style.display='none'}
+/* ---------- candado de host ----------
+   Sin la clave de host, la app solo sirve para mirar una partida con el QR
+   de alguien. La clave se comprueba contra Firebase una vez por celular. */
+function showLock(){ const l=$('lock'); if(l) l.style.display='flex' }
+function tryUnlock(){
+  const i=$('lockkey'), b=$('lockbtn'), m=$('lockmsg');
+  if(!i.value.trim()){ m.textContent='Escribe la clave'; return }
+  b.disabled=true; m.textContent='Revisando…';
+  Live.unlockHost(i.value).then(()=>{
+    $('lock').style.display='none'; i.value=''; toast('Listo: este celular es host 🔓');
+  },e=>{
+    b.disabled=false;
+    m.textContent=/clave/.test(e.message)?'Clave incorrecta':'No se pudo revisar: necesitas internet la primera vez';
+  });
+}
 function toast(m){
   const t=$('toast');
   // el aviso de version nueva deja el toast clickeable y con onclick.
@@ -248,6 +267,7 @@ const delPlayer=aDormir;   // nombre viejo, por si quedo alguna referencia
 function newGame(){
   S.players.forEach(p=>{p.sips=0;p.done=0;p.skip=0;p.out=0});   // vuelven todos
   S.recent={}; S.bag={}; S.startedAt=Date.now(); S.totalDrawn=0; resetLog();
+  if(window.Live&&Live.isSharing()) Live.stopShare();   // partida nueva, sala nueva
   renderPlayers(); save();
   toast('Partida nueva: marcador en cero, mismos jugadores 🔄');
 }
@@ -1099,14 +1119,58 @@ function bombBoom(){
 const AG_COL={r:'#ff3d7f',a:'#59c2ff',n:'#b9a67a',x:'#0d0a14'};
 const AG_NM={r:'Rojo',a:'Azul'};
 const AG_EM={r:'🔴',a:'🔵',n:'🙂',x:'💀'};
-let AG={phase:'setup',mode:'equipos',teams:null,g:null,clueN:1};
+let AG={phase:'setup',mode:'equipos',teams:null,g:null,clueN:1,secs:0,deadline:null,paused:null,tk:null};
+/* ---------- temporizador ----------
+   Opcional, por turno. Al llegar a cero el turno pasa (en la cooperativa
+   juega el rival). Salir de la pantalla lo pausa. */
+function agTimerStart(){
+  clearInterval(AG.tk); AG.tk=null; AG.paused=null;
+  AG.deadline=AG.secs&&AG.g&&!AG.g.winner?Date.now()+AG.secs*1000:null;
+  if(AG.deadline) AG.tk=setInterval(agTimerTick,250);
+}
+function agTimerStop(){ clearInterval(AG.tk); AG.tk=null; AG.deadline=null; AG.paused=null }
+function agPause(){
+  if(!AG.deadline) return;
+  AG.paused=Math.max(0,AG.deadline-Date.now());
+  clearInterval(AG.tk); AG.tk=null; AG.deadline=null;
+}
+function agResume(){
+  if(AG.paused==null||!AG.g||AG.g.winner) return;
+  AG.deadline=Date.now()+AG.paused; AG.paused=null;
+  AG.tk=setInterval(agTimerTick,250);
+}
+let agLastBeep=0;
+function agTimerTick(){
+  if(!AG.deadline) return;
+  const left=AG.deadline-Date.now(), s=Math.ceil(left/1000);
+  const el=$('agtimer');
+  if(el){ el.textContent=agFmt(s); el.classList.toggle('urgent',s<=10) }
+  if(s<=5&&s>0&&s!==agLastBeep){ agLastBeep=s; sfx.tick(true); vib(20) }
+  if(left<=0) agTimeUp();
+}
+function agFmt(s){ s=Math.max(0,s); return `⏱ ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` }
+function agTimeUp(){
+  agTimerStop();
+  if(!AG.g||AG.g.winner) return;
+  sfx.timeUp(); vib([120,60,120]);
+  toast('⏱ ¡Se acabó el tiempo! Pasa el turno');
+  AG.g=Agente.endTurn(AG.g);
+  AG.draft='';
+  agAfterMove(true);
+}
+function agSetSecs(n){ AG.secs=n; renderAgente() }
+/* después de cada jugada: si cambió el turno, el reloj parte de nuevo */
+function agAfterMove(turnoNuevo){
+  if(AG.g.winner) agTimerStop(); else if(turnoNuevo) agTimerStart();
+  renderAgente();
+}
 function agNames(){ return enJuego().map(p=>p.n) }
 function agWords(){
   const w=AGENTE_WORDS.BASE.slice();
   return S.intensity>=3?w.concat(AGENTE_WORDS.PICANTE):w;
 }
 function initAgente(){
-  if(AG.phase==='play'&&AG.g&&!AG.g.winner){ renderAgente(); return }   // volver no corta la partida
+  if(AG.phase==='play'&&AG.g&&!AG.g.winner){ agResume(); renderAgente(); return }   // volver no corta la partida
   const ns=agNames();
   // se conservan los equipos si la mesa es la misma
   const misma=AG.teams&&ns.length===AG.teams.r.length+AG.teams.a.length&&ns.every(n=>Agente.teamOf(AG.teams,n));
@@ -1129,8 +1193,9 @@ function agStart(){
   const prob=Agente.teamsProblem(AG.teams,AG.mode);
   if(prob){ toast(prob); return }
   AG.g=Agente.newGame(agWords(),{mode:AG.mode});
-  AG.phase='play'; AG.clueN=1;
+  AG.phase='play'; AG.clueN=1; AG.draft='';
   if(!S.startedAt) S.startedAt=Date.now();
+  agTimerStart();
   if(window.Live) Live.sendKey(AG);
   renderAgente();
 }
@@ -1174,7 +1239,7 @@ function agGiveClue(){
 function agPass(){
   if(!Agente.canPass(AG.g)){ toast('Hay que intentar al menos una'); return }
   AG.g=Agente.endTurn(AG.g);
-  sfx.tap(); renderAgente();
+  sfx.tap(); agAfterMove(true);
 }
 /* los sorbos de una jugada van a todo el equipo */
 function agApplySips(list){
@@ -1192,11 +1257,12 @@ function agGuess(i){
   if(!AG.g||!AG.g.clue){ toast('Primero la pista del jefe'); return }
   const r=Agente.guess(AG.g,i);
   if(!r.res) return;
+  const antes=AG.g;
   AG.g=r.g;
   const k=r.res.kind;
   if(k==='own'){ sfx.tap(); vib(20) } else if(k==='assassin'){ sfx.timeUp(); vib([200,80,200,80,300]) } else { sfx.tick(true); vib([60,40,60]) }
   agApplySips(r.res.sips);
-  renderAgente();
+  agAfterMove(r.res.end&&!AG.g.winner&&(AG.g.turn!==antes.turn||!AG.g.clue));
 }
 function agRevealStart(){ const g=$('aggrid'); if(g) g.classList.add('showkey') }
 function agRevealEnd(){ const g=$('aggrid'); if(g) g.classList.remove('showkey') }
@@ -1220,6 +1286,8 @@ function renderAgente(){
         <button class="chip${AG.mode==='coop'?' on':''}" onclick="agSetMode('coop')">🤝 Cooperativa</button>
       </div>
       ${AG.mode==='coop'?`<p class="csub">Todos juntos contra un rival simulado: después de cada turno, el rival descubre una de sus palabras. Si termina antes que ustedes, pierden.</p>`:`<p class="csub">Toca un nombre para cambiarlo de equipo.</p>`}
+      <div class="qlabel" style="margin-top:12px">⏱ Tiempo por turno</div>
+      <div class="agnums">${[[0,'Sin tiempo'],[60,'1 min'],[120,'2 min'],[180,'3 min']].map(([n,l])=>`<button class="qbtn${AG.secs===n?' named':''}" onclick="agSetSecs(${n})">${l}</button>`).join('')}</div>
       <div class="agteams">${agTeamList('r')}${AG.mode==='equipos'?agTeamList('a'):''}</div>
       <button class="btn btn-ghost" onclick="agShuffle()" style="margin:10px 0">🔀 Rearmar al azar</button>
       ${agKeyPanel()}
@@ -1252,7 +1320,8 @@ function renderAgente(){
   const cuenta=AG.mode==='coop'
     ?`<span>🕶️ faltan ${Agente.leftOf(g,'r')}</span><span>🤖 rival: ${Agente.leftOf(g,'a')}</span>`
     :`<span style="color:${AG_COL.r}">🔴 ${Agente.leftOf(g,'r')}</span><span style="color:${AG_COL.a}">🔵 ${Agente.leftOf(g,'a')}</span>`;
-  box.innerHTML=`${top}<div class="agcount">${cuenta}
+  const reloj=AG.deadline||AG.paused!=null?`<span class="agtimer" id="agtimer">${agFmt(Math.ceil(((AG.deadline||Date.now()+AG.paused)-Date.now())/1000))}</span>`:'';
+  box.innerHTML=`${top}<div class="agcount">${cuenta}${reloj}
     <button class="holdbtn agpeek" id="agpeek">👁 Clave</button></div>
     ${agGrid()}
     <div style="margin-top:12px">${agKeyPanel()}</div>`;
@@ -1349,4 +1418,4 @@ function initSW(){
   }).catch(()=>{});
 }
 initSW();
-if(window.Live) Live.boot();
+if(window.Live){ Live.boot(); if(!Live.isHost()&&!Live.isViewing()) showLock() }

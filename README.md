@@ -54,6 +54,7 @@ Dos equipos, 25 palabras y una clave que solo ven los jefes. Por turnos, cada je
 - **Equipos** al azar y parejos, con un jefe cada uno. Tocando un nombre se cambia de equipo, y con *hacer jefe* se elige otro jefe.
 - **La clave**: si el jefe eligió su nombre en el link de 📡, la ve en su celular. Si no, el host le muestra el **QR del jefe**, que lo sienta directo. Sin celular, se mantiene presionado **👁 Clave** en el tablero. Con dos celulares basta: el del host es el tablero y los dos jefes comparten otro, porque la clave es la misma.
 - **Los demás celulares** ven el tablero en vivo con lo descubierto, la pista y los intentos, pero nunca la clave.
+- **Temporizador** opcional por turno (1, 2 o 3 minutos): en los últimos 5 segundos suena un tic-tac, al llegar a cero pasa el turno y salir de la pantalla lo pausa. Los celulares que miran ven la cuenta regresiva.
 - **Cooperativa** (desde 2): todos contra un rival simulado que descubre una palabra suya en cada turno. Si termina antes, pierden. Si ganan, reparten tantos sorbos como palabras le quedaban al rival.
 
 Las palabras están en `AGENTE_WORDS` de `cards.js`: `BASE` siempre, y `PICANTE` se suma en intensidad 🌶️ Picante.
@@ -79,6 +80,12 @@ El 📡 (en el inicio y arriba de cada carta) muestra un QR, un código de 6 let
 - Necesita internet en los dos lados. Si se corta, el juego sigue igual en el celular del host y la transmisión se reintenta sola.
 - Si el host bloquea el celular, los demás siguen viendo la última carta y un aviso de que no hay novedades. Al desbloquear se pone al día.
 - Recargar la página no corta la transmisión: retoma la misma sala. *Dejar de compartir* la borra.
+
+#### Privacidad: solo el host
+
+- **Clave de host.** La app pide una clave la primera vez en cada celular; sin ella solo sirve para mirar una partida con el QR de alguien. La clave se revisa contra Firebase y queda recordada en ese celular. Compartir en vivo lo bloquea Firebase en el servidor: sin la clave nadie puede crear salas. El candado de la app, en cambio, es del lado del navegador: como el código es público, alguien que sepa programar podría jugar offline igual, pero nunca compartir.
+- **La clave no está en el repo.** En `database.rules.json` va el marcador `__CLAVE_HOST__`; al pegar las reglas en la consola se reemplaza por la clave real (solo letras y números, sin comillas).
+- **Una sala dura una noche.** *Terminar la noche* ofrece cerrarla, *Partida nueva* la cierra, y la app no retoma salas de más de 8 horas. Además, Firebase deja de servir salas sin novedades en 12 horas, así que un QR viejo no entra aunque la sala no se haya borrado.
 
 #### Cada uno en su celular
 
@@ -179,7 +186,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 100 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 102 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.
