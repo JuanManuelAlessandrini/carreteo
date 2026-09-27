@@ -408,7 +408,8 @@ function showCard(raw,forceP1){
   const origen=S.mode&&S.mode.mix&&S.mixMap?S.mixMap[raw]:null;
   if(origen) document.documentElement.style.setProperty('--accent',origen.c);
   let ans=null,txt=c.x;
-  if(c.k==='p'&&txt.includes('§')){[txt,ans]=txt.split('§')}
+  let dato=null;   // trivia: pregunta§respuesta§dato curioso
+  if(c.k==='p'&&txt.includes('§')){[txt,ans,dato]=txt.split('§')}
   if(c.k==='pc'){txt=c.parts[0]}
   // el reemplazo va como funcion: un nombre con $' o $& se interpretaria
   // como patron y duplicaria el texto de la carta
@@ -450,6 +451,7 @@ function showCard(raw,forceP1){
       reloj.remove(); b.remove();
       const d=document.createElement('div');d.className='answer';d.textContent=adapt(ans);
       w.appendChild(d);
+      if(dato){ const f=document.createElement('div');f.className='funfact';f.textContent='💡 '+adapt(dato);w.appendChild(f) }
     };
     b.onclick=revelar;
     w.appendChild(reloj);w.appendChild(b);
@@ -467,7 +469,8 @@ function showCard(raw,forceP1){
   }
   // votación: los que eligieron jugador en su celular votan desde ahí
   if(c.k==='vt'&&window.Live&&Live.isSharing()) Live.openVote(w,card.querySelector('.ctext').textContent);
-  renderQuick(txt,c,p1,p2);
+  // en la trivia los sorbos están en la respuesta ("Fallo = 2 sorbos"), no en la pregunta
+  renderQuick(ans||txt,c,p1,p2);
   renderRules();
   S.drawn++;S.totalDrawn++;$('gcount').textContent=`carta ${S.drawn}`;
 }

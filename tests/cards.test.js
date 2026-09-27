@@ -59,9 +59,9 @@ test('las cartas de premio o castigo traen reto, premio y castigo', () => {
   assert.ok(total >= 25, 'solo hay ' + total + ' cartas de premio o castigo');
 });
 
-test('las preguntas con respuesta usan un solo §', () => {
+test('las preguntas usan a lo más pregunta§respuesta§dato curioso', () => {
   const malas = todasLasCartas()
-    .filter(x => { const c = E.parseCard(x.card); return c.k === 'p' && c.parts.length > 2; })
+    .filter(x => { const c = E.parseCard(x.card); return c.k === 'p' && c.parts.length > 3; })
     .map(x => x.modo + ': ' + x.card.slice(0, 60));
   assert.deepStrictEqual(malas, []);
 });
@@ -180,4 +180,17 @@ test('nada sugiere manejar', () => {
     .filter(x => peligro.test(x.card))
     .map(x => x.modo + ': ' + x.card.slice(0, 70));
   assert.deepStrictEqual(malas, []);
+});
+
+test('cada trivia trae pregunta, respuesta, sorbos y un dato curioso', () => {
+  const { MODES } = require('../cards.js');
+  const t = MODES.find(m => m.id === 'trivia');
+  t.deck.forEach(c => {
+    const partes = c.replace(/^(\[\d\])?p\d*\|/, '').split('§');
+    assert.equal(partes.length, 3, 'pregunta§respuesta§dato: ' + c.slice(0, 60));
+    assert.match(partes[0], /\?$/, 'la pregunta termina en ?: ' + partes[0]);
+    assert.match(partes[1], /\d+ sorbos?|toma \d/, 'la respuesta dice cuántos sorbos: ' + partes[1]);
+    assert.ok(partes[2].length >= 15, 'dato curioso muy corto: ' + partes[2]);
+    assert.doesNotMatch(partes[2], /sorbo/, 'el dato no suma sorbos');
+  });
 });

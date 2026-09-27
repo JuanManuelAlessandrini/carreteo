@@ -230,7 +230,7 @@
     var card = null;
     var cardEl = view === 'game' ? $('gcard') : view === 'rey' ? $('reycard') : view === 'dealer' ? $('dcard') : null;
     if (cardEl) {
-      card = { label: txt(cardEl, '.ctype'), text: txt(cardEl, '.ctext'), ans: txt(cardEl, '.answer'), sub: txt(cardEl, '.csub') };
+      card = { label: txt(cardEl, '.ctype'), text: txt(cardEl, '.ctext'), ans: txt(cardEl, '.answer'), fun: txt(cardEl, '.funfact'), sub: txt(cardEl, '.csub') };
       if (!card.text) card = null;
     }
     var mode = null;
@@ -733,6 +733,7 @@
         '<div class="ctext">' + escH(st.card.text) + '</div>' +
         (st.card.sub ? '<div class="csub">' + escH(st.card.sub) + '</div>' : '') +
         (st.card.ans ? '<div class="answer">' + escH(st.card.ans) + '</div>' : '') +
+        (st.card.fun ? '<div class="funfact">' + escH(st.card.fun) + '</div>' : '') +
         '</div>';
     }
     html += mine.after;
