@@ -138,7 +138,7 @@ Por dentro usa Firebase Realtime Database (plan gratis Spark) hablándole por RE
 | Código | Etiqueta | Notas |
 |---|---|---|
 | `r` | Reto | |
-| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`. Arranca un cronómetro de 20s y al acabarse revela la respuesta sola; `p30` le da 30 segundos. |
+| `p` | Pregunta | Con `§` se vuelve trivia: `pregunta§respuesta`, y con un segundo `§`, un dato curioso que aparece bajo la respuesta: `pregunta§respuesta§dato`. Arranca un cronómetro de 20s y al acabarse revela la respuesta sola; `p30` le da 30 segundos. |
 | `yn` | Yo nunca | |
 | `rg` | Regla nueva | `rg3` dura 3 rondas y se muestra en la barra de reglas activas. |
 | `vt` | Votación | |
@@ -198,7 +198,7 @@ npm run check
 
 Son dos cosas:
 
-- **`npm test`** — 111 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
+- **`npm test`** — 112 tests del motor, del contenido, de los gráficos y de compartir en vivo. Verifica que la garantía de no-repetición aguante, que el reparto de turnos sea parejo, y que todas las cartas parseen, no estén duplicadas, tengan tipo conocido y no sugieran manejar.
 - **`npm run smoke`** — arranca la app entera en un navegador simulado, juega 40 turnos en cada modo de cartas y cuenta las repeticiones. Debe decir `modos limpios: 20/20`.
 
 Si algo falla, el mensaje dice qué carta y por qué. El test más útil cuando agregas cartas es el de duplicados: caza las que ya existían en otro modo escritas parecido.

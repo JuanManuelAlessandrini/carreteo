@@ -358,6 +358,12 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (!ans) throw new Error('nunca revelo la respuesta');
     if (!ans.textContent.trim()) throw new Error('revelo una respuesta vacia');
     if ($('cwidget').querySelector('.timerbig')) throw new Error('el cronometro quedo en pantalla');
+    const lab = $('quickadd').querySelector('.qlabel').textContent;
+    const pide = (ans.textContent.match(/(\d+) sorbo/) || [])[1];
+    if (pide && !lab.includes('+' + pide + ' ')) throw new Error('la respuesta dice ' + pide + ' sorbos y la fila anota: ' + lab);
+    const dato = $('cwidget').querySelector('.funfact');
+    if (!dato || !/^💡 \S/.test(dato.textContent)) throw new Error('no apareció el dato curioso bajo la respuesta');
+    if (ev('Live')._snapshot().card.fun !== dato.textContent) throw new Error('el dato curioso no viaja a la vista en vivo');
     logs.push('   trivia: ' + segs + 's y revelo "' + ans.textContent.slice(0, 32) + '..."');
     W.endGame();
   });
