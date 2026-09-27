@@ -150,11 +150,17 @@
   -------------------------------------------*/
 
   var DEFAULT_WINDOW = 20;
-  var RECENT_CAP = 40;
+  // Tiene que alcanzar para la ventana del mazo más grande
+  var RECENT_CAP = 200;
 
+  /* La ventana crece con el mazo: 2/3 de las cartas, al menos 20. Con una
+     fija de 20, en un mazo de 120 una carta de hace 21 turnos ya contaba
+     como nueva y podía volver al tiro al reentrar al modo. Siempre deja 5
+     afuera para que los mazos chicos conserven algo de sorpresa. */
   function windowSize(total, cap) {
-    var want = cap == null ? DEFAULT_WINDOW : cap;
-    return Math.max(0, Math.min(want, (total || 0) - 5));
+    var n = total || 0;
+    var want = cap == null ? Math.max(DEFAULT_WINDOW, Math.floor(n * 2 / 3)) : cap;
+    return Math.max(0, Math.min(want, n - 5));
   }
 
   function buildDeck(all, recent, opts) {

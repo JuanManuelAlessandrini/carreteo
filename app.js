@@ -169,6 +169,7 @@ function go(id){
   if(id==='ruleta') initWheel();
   if(id==='impostor') impSetup();
   if(id==='rey') initKing();
+  if(id==='dealer') initDealer();
   if(id==='agente') initAgente(); else if(typeof AG!=='undefined') agPause();
   // Salir de la pantalla apaga la mecha a propósito: si siguiera corriendo,
   // explotaría en una pantalla que nadie está mirando. Se avisa para que no
@@ -1344,6 +1345,59 @@ function renderAgente(){
     if(n>0) sipRowIn($('agsips'),n,[],AG.mode==='coop'?'repartan a quien quieran':`el jefe ${AG_EM[g.winner]} reparte`);
   }
   const inp=$('agclue'); if(inp) inp.addEventListener('keydown',e=>{if(e.key==='Enter')agGiveClue()});
+}
+
+
+/* ---------- Fuck the Dealer ----------
+   Un solo celular a la vista de todos: la app sabe la carta, dice "más
+   alto" o "más bajo" y anota los sorbos. La lógica está en dealer.js.
+--------------------------------------*/
+let FTD=null;
+function initDealer(){
+  if(FTD&&!FTD.over&&FTD.names.every(n=>S.players.some(p=>p.n===n&&!p.out))){ renderDealer(); return }
+  FTD=Dealer.newGame(enJuego().map(p=>p.n));
+  if(!S.startedAt) S.startedAt=Date.now();
+  renderDealer();
+}
+function dealerNew(){ FTD=Dealer.newGame(enJuego().map(p=>p.n)); renderDealer() }
+function dealerGuess(v){
+  const r=Dealer.guess(FTD,v);
+  if(!r.res) return;
+  FTD=r.g;
+  const pal=S.noAlcohol?'puntos':'sorbos';
+  r.res.drinks.forEach(d=>{ const p=S.players.find(x=>x.n===d.who); if(p) p.sips=(p.sips||0)+d.n });
+  if(r.res.drinks.length) save();
+  if(r.res.kind==='hint'){ sfx.tap(); vib(15) }
+  else if(r.res.kind==='miss'){ sfx.tick(true); vib([60,40,60]) }
+  else { sfx.timeUp(); vib([100,50,100]) }
+  const msg=r.res.drinks.map(d=>`${d.who} +${d.n} ${pal} (${d.why})`);
+  if(r.res.passed) msg.push(`🃏 ${r.res.passed.from} ganó 3 seguidas: ahora reparte ${r.res.passed.to}`);
+  if(msg.length) toast(msg.join(' · '));
+  renderDealer(r.res);
+}
+function renderDealer(res){
+  const box=$('dealerbox');
+  if(!box||!FTD) return;
+  const g=FTD, dealer=g.names[g.dealer], quien=g.names[g.guesser];
+  const ultima=g.last?`<span class="dlast${g.last.s==='♥'||g.last.s==='♦'?' red':''}">${Dealer.label(g.last)}</span>`:'';
+  let head;
+  if(g.over){
+    head=`<div class="gcard" id="dcard"><span class="ctype">Se acabó el mazo</span><div class="ctext">Fin de la ronda. ${ultima}</div></div>
+      <button class="btn btn-primary" onclick="dealerNew()">Barajar de nuevo 🃏</button>`;
+  }else{
+    const pista=g.stage==='second'?`<b>${g.hint==='up'?'⬆️ Más alto':'⬇️ Más bajo'}</b> que ${Dealer.NAMES[g.first]}. Segundo intento:`:'¿Qué número es la carta de arriba?';
+    const res1=res&&res.kind!=='hint'?`<div class="csub">Era ${Dealer.label(res.card)}.</div>`:'';
+    head=`<div class="gcard" id="dcard"><span class="ctype">Dealer: ${esc(dealer)} · ${'🔥'.repeat(g.streak)}${g.streak}/3</span>
+      <div class="ctext"><span class="pj">${esc(quien)}</span>, ${pista}</div>${res1}</div>
+      <div class="dranks">${Dealer.NAMES.slice(1).map((n,i)=>{
+        const v=i+1, quedan=4-g.seen[v];
+        const fuera=g.stage==='second'&&(g.hint==='up'?v<=g.first:v>=g.first);
+        return `<button class="drank" ${quedan<=0||fuera?'disabled':''} onclick="dealerGuess(${v})" aria-label="${n}, quedan ${quedan}">${n}<small>${quedan}</small></button>`;
+      }).join('')}</div>`;
+  }
+  box.innerHTML=`${head}
+    <div class="dinfo"><span>🂠 quedan ${Dealer.left(g)}</span>${g.last?`<span>última: ${ultima}</span>`:''}</div>
+    <div class="impcard" style="text-align:left"><p class="csub" style="margin:0">A la primera, el dealer toma ${Dealer.RULES.first}. A la segunda, ${Dealer.RULES.second}. Si fallas las dos, tomas la diferencia (máximo ${Dealer.RULES.maxDiff}). Si el dealer gana 3 seguidas, pasa el mazo. Los números chicos bajo cada botón son las cartas que quedan.</p></div>`;
 }
 
 /* ---------- pie de página con el conteo real ---------- */

@@ -545,7 +545,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const fs2 = require('fs'), path2 = require('path');
     const roto = /\\U[0-9A-Fa-f]{8}/g;
     const malos = [];
-    ['app.js', 'agente.js', 'cards.js', 'charts.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
+    ['app.js', 'agente.js', 'dealer.js', 'cards.js', 'charts.js', 'engine.js', 'live.js', 'index.html', 'sw.js'].forEach(f => {
       const m = fs2.readFileSync(path2.join(ROOT, f), 'utf8').match(roto);
       if (m) malos.push(f + ': ' + [...new Set(m)].join(' '));
     });
@@ -555,7 +555,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
   await run('ninguna pantalla muestra codigos de emoji crudos', async () => {
     const sucias = [];
     for (const id of ['home', 'players', 'modes', 'game', 'board', 'summary',
-                      'ruleta', 'impostor', 'rey', 'mixpick', 'bomba', 'agente']) {
+                      'ruleta', 'impostor', 'rey', 'mixpick', 'bomba', 'agente', 'dealer']) {
       if (!$(id)) continue;
       W.go(id); await tick();
       if (/U000[0-9A-Fa-f]{5}/.test($(id).textContent)) sucias.push(id);
@@ -618,7 +618,7 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     const ver = sw.match(/CACHE\s*=\s*'([^']+)'/);
     if (!ver) throw new Error('sw.js no declara la versión del cache');
     // todo archivo que la página carga tiene que estar precacheado
-    ['index.html', 'cards.js', 'engine.js', 'app.js', 'charts.js', 'agente.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
+    ['index.html', 'cards.js', 'engine.js', 'app.js', 'charts.js', 'agente.js', 'dealer.js', 'live.js', 'vendor/qrcode.js'].forEach(f => {
       if (!sw.includes(f)) throw new Error('sw.js no precachea ' + f);
     });
     logs.push('   cache: ' + ver[1] + ' · ' + m.icons.length + ' íconos');
@@ -972,6 +972,33 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (!put || JSON.parse(put.opt.body) !== 'buena') throw new Error('no mandó la clave a hosts/<su id>');
     if ($('lock').style.display !== 'none') throw new Error('no se desbloqueó');
     if (!W.Live.isHost()) throw new Error('no recordó que este celular es host');
+  });
+
+  await run('fuck the dealer: adivinar, pista, sorbos y el mazo que se acaba', async () => {
+    W.go('dealer');
+    const g = () => ev('FTD');
+    if (!g() || g().deck.length !== 52) throw new Error('no armó el mazo');
+    if ($('dealerbox').querySelectorAll('.drank').length !== 13) throw new Error('faltan los 13 números');
+    const dealer = g().names[g().dealer];
+    const pd = S().players.find(p => p.n === dealer);
+    const antes = pd.sips || 0;
+    W.dealerGuess(g().deck[g().pos].v);
+    if (pd.sips !== antes + 5) throw new Error('acertar a la primera no le sumó 5 al dealer');
+    // pista: después de fallar, los números del lado equivocado quedan apagados
+    const c = g().deck[g().pos].v, v = c === 13 ? 1 : 13;
+    W.dealerGuess(v);
+    if (g().stage !== 'second') throw new Error('no pasó al segundo intento');
+    if (!/Más (alto|bajo)/.test($('dealerbox').textContent)) throw new Error('no dio la pista');
+    const btns = $('dealerbox').querySelectorAll('.drank');
+    if (!btns[v - 1].disabled) throw new Error('dejó elegir un número del lado equivocado');
+    // en la vista en vivo se ve lo que dice la carta
+    if (ev('Live')._snapshot().card.text.indexOf(g().names[g().guesser]) < 0) throw new Error('la foto en vivo no trae la pantalla del dealer');
+    let n = 0;
+    while (!g().over && n++ < 200) W.dealerGuess(g().deck[g().pos].v);
+    if (!/Se acabó el mazo/.test($('dealerbox').textContent)) throw new Error('no avisó que se acabó el mazo');
+    W.dealerNew();
+    if (g().over || g().pos !== 0) throw new Error('no barajó de nuevo');
+    W.go('modes');
   });
 
   await run('doble agente (celular): el QR del jefe lo sienta y ve la clave; el resto no', async () => {
