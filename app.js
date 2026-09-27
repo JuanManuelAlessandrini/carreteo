@@ -452,6 +452,7 @@ function showCard(raw,forceP1){
       const d=document.createElement('div');d.className='answer';d.textContent=adapt(ans);
       w.appendChild(d);
       if(dato){ const f=document.createElement('div');f.className='funfact';f.textContent='💡 '+adapt(dato);w.appendChild(f) }
+      triviaChoice($('quickadd'),E.sipsInText(adapt(ans)),p1);
     };
     b.onclick=revelar;
     w.appendChild(reloj);w.appendChild(b);
@@ -470,7 +471,9 @@ function showCard(raw,forceP1){
   // votación: los que eligieron jugador en su celular votan desde ahí
   if(c.k==='vt'&&window.Live&&Live.isSharing()) Live.openVote(w,card.querySelector('.ctext').textContent);
   // en la trivia los sorbos están en la respuesta ("Fallo = 2 sorbos"), no en la pregunta
-  renderQuick(ans||txt,c,p1,p2);
+  // la trivia pregunta primero si acertó: acertar regala, fallar toma
+  if(ans){ const q=$('quickadd'); q.innerHTML=`<div class="qlabel">🧠 Responde antes de que se acabe el tiempo</div>` }
+  else renderQuick(txt,c,p1,p2);
   renderRules();
   S.drawn++;S.totalDrawn++;$('gcount').textContent=`carta ${S.drawn}`;
 }
@@ -526,6 +529,35 @@ function sipRowIn(parent,n,destacados,etiqueta){
   if(!c){ c=document.createElement('div');c.className='quickadd';parent.appendChild(c) }
   renderSipRow(c,n,destacados,false,etiqueta);
   return c;
+}
+/* Trivia: acertó → regala los sorbos (se tocan uno por uno a quién);
+   falló → toma, con la fila de siempre. */
+function triviaChoice(cont,n,p1){
+  if(!cont) return;
+  const pal=S.noAlcohol?'puntos':'sorbos';
+  cont.innerHTML=`<div class="qlabel">¿Acertó?</div>
+    <div class="qrow"><button class="qbtn named" id="tvok">✅ Acertó: regala ${n}</button><button class="qbtn" id="tvko">❌ Falló: toma ${n}</button></div>`;
+  $('tvko').onclick=()=>renderSipRow(cont,n,[p1],false,'falló: toca al que toma');
+  $('tvok').onclick=()=>{
+    let quedan=n;
+    const pinta=()=>{
+      cont.innerHTML='';
+      const lab=document.createElement('div');lab.className='qlabel';
+      lab.textContent=quedan>0?`✅ regala ${quedan} ${quedan===1?pal.slice(0,-1):pal}: toca a quién`:`✅ regalados los ${n}`;
+      cont.appendChild(lab);
+      if(quedan<=0) return;
+      const row=document.createElement('div');row.className='qrow';
+      enJuego().filter(p=>p!==p1).forEach(p=>{
+        const b=document.createElement('button');b.className='qbtn';
+        b.innerHTML=`+1 <b>${esc(p.n)}</b>`;
+        b.setAttribute('aria-label',`Regalarle un ${pal.slice(0,-1)} a ${p.n}`);
+        b.onclick=()=>{ addSips(p,1); quedan--; pinta() };
+        row.appendChild(b);
+      });
+      cont.appendChild(row);
+    };
+    pinta();
+  };
 }
 function renderQuick(txt,c,p1,p2){
   renderSipRow($('quickadd'),E.sipsInText(adapt(txt)),[p1,p2],true);

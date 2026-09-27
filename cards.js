@@ -150,7 +150,7 @@ const MODES=[
 `r|{j}, actúa cómo te acercarías a {j2} si fuera la primera vez que se ven en un bar. Si el grupo aplaude, repartes 2; si no, tomas 2.`,
 `vt|{j} abre la votación: ¿quién sería el mejor casamentero del grupo? El ganador reparte 2 sorbos con orgullo.`,
 `dd|{j}, lanza el dado: con 1 o 2 cuenta una cita desastrosa, con 3 o 4 una que la rompió, con 5 o 6 toma 3.`]},
-{id:'trivia',nm:'Trivia',em:'🧠',c:'#59c2ff',ds:'Fallas, tomas. Y de yapa, un dato curioso.',lvl:1,deck:[
+{id:'trivia',nm:'Trivia',em:'🧠',c:'#59c2ff',ds:'Aciertas, regalas. Fallas, tomas. Y de yapa, un dato curioso.',lvl:1,deck:[
 `p|¿Cuál es el río más largo del mundo?§El Amazonas, según las mediciones más recientes (el Nilo pelea el título). Si fallaste, toma 2.§El Amazonas lleva más agua que cualquier otro río: cerca de una quinta parte del agua dulce que llega a los océanos.`,
 `p|¿En qué año llegó el ser humano a la Luna?§1969. Fallo = 2 sorbos.§Las huellas de los astronautas siguen allá: sin viento ni lluvia, pueden durar millones de años.`,
 `p|¿Cuántos corazones tiene un pulpo?§Tres. Fallo = 2 sorbos.§Su sangre es azul: usa cobre en vez de hierro para llevar el oxígeno.`,
