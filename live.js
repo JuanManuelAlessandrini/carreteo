@@ -31,6 +31,11 @@
   var ALFA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   var CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
   var STALE_MS = 2 * 60 * 1000;
+  // Una sala vive una noche: pasado esto no se retoma y se abre otra.
+  // Las reglas de Firebase, además, dejan de servir salas sin novedades
+  // en 12 h, así un QR viejo no entra aunque la sala no se haya borrado.
+  var ROOM_TTL = 8 * 3600 * 1000;
+  var HKEY = 'carreteo.host';
 
   /* ---------- parte pura ---------- */
   function newCode(rng) {
@@ -114,7 +119,7 @@
 
   var api = {
     pidOf: pidOf, tally: tally, seatedNames: seatedNames,
-    CFG: CFG, soyFromHash: soyFromHash, newCode: newCode, validCode: validCode, codeFromHash: codeFromHash,
+    ROOM_TTL: ROOM_TTL, CFG: CFG, soyFromHash: soyFromHash, newCode: newCode, validCode: validCode, codeFromHash: codeFromHash,
     viewUrl: viewUrl, applyEvent: applyEvent, asList: asList, ago: ago, STALE_MS: STALE_MS
   };
   if (typeof document === 'undefined') return api;
@@ -255,7 +260,9 @@
     if (!G || !G.teams) return null;
     var base = { mode: G.mode, teams: { r: G.teams.r, a: G.teams.a }, jefe: G.teams.jefe };
     if (G.phase !== 'play' || !G.g || !window.Agente) return Object.assign(base, { setup: true });
-    return Object.assign(base, Agente.publicView(G.g));
+    // el reloj viaja como hora de término: cada celular cuenta solo, sin
+    // publicar cada segundo
+    return Object.assign(base, Agente.publicView(G.g), { secs: G.secs || 0, end: G.deadline || null, pausa: G.paused != null });
   }
 
   /* Los gráficos viajan ya calculados y compactos: los tramos de la carrera
@@ -347,6 +354,25 @@
     clearTimeout(H.retryT); H.retryT = null;
     H.last = ''; touch();
   }
+  /* ---------- clave de host ----------
+     Solo quien tiene la clave puede crear salas: las reglas de Firebase
+     aceptan escribir hosts/<id> únicamente con la clave correcta, y crear
+     una sala exige estar en esa lista. La clave vive solo en las reglas
+     de la consola de Firebase; ni la app ni el repo la conocen. */
+  function isHost() { try { var h = JSON.parse(localStorage.getItem(HKEY)); return !!(h && h.ok) } catch (e) { return false } }
+  function unlockHost(clave) {
+    clave = String(clave || '').trim();
+    if (!clave) return Promise.reject(new Error('vacía'));
+    return token().then(function () {
+      return fetch(dbUrl('/hosts/' + H.uid, H.token), { method: 'PUT', body: JSON.stringify(clave) });
+    }).then(function (r) {
+      if (r.status === 401) throw new Error('clave');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      try { localStorage.setItem(HKEY, JSON.stringify({ ok: true, uid: H.uid, at: Date.now() })) } catch (e) {}
+      return true;
+    });
+  }
+
   /* ---------- asientos, impostor y votos (host) ---------- */
   function seatOf(n) { return !!(H.code && H.seats && H.seats[pidOf(n)]) }
   function renderSeats() {
@@ -425,6 +451,7 @@
   function jefeQR(n) {
     var m = $('agqrmodal');
     if (!m) return;
+    if (!isHost()) { if (window.toast) window.toast('Compartir es solo para el host 🔒'); return }
     if (!H.code) startHost(newCode());
     var url = viewUrl(location, H.code) + '&soy=' + encodeURIComponent(n);
     $('agqrtxt').textContent = n + ': escanea esto con tu celular. Quedas como ' + n + ' y ves la clave solo tú.';
@@ -478,6 +505,8 @@
   function startHost(code) {
     var d = mem();
     H.uid = d.uid || null; H.refresh = d.refresh || null;
+    // la hora de creación viaja con el código: al recargar se conserva
+    if (d.code !== code || !d.codeAt) d.codeAt = Date.now();
     H.code = code; d.code = code; remember(d);
     setStatus('wait'); observe(); publish(); watchSeats();
     if (H.wired) return;
@@ -494,7 +523,7 @@
     closeVote();
     if (H.seatsS) { H.seatsS.close(); H.seatsS = null }
     H.seats = {}; H.imp = null;
-    var d = mem(); delete d.code; remember(d);
+    var d = mem(); delete d.code; delete d.codeAt; remember(d);
     setStatus('off');
     // la sala va al final: las otras reglas preguntan quién es su host
     if (code) Promise.all(['/asientos/', '/privado/', '/votos/'].map(function (p) {
@@ -513,6 +542,7 @@
   function openShare() {
     var m = $('livemodal');
     if (!m) return;
+    if (!isHost()) { if (window.toast) window.toast('Compartir es solo para el host 🔒'); return }
     if (!H.code) startHost(newCode());
     var url = viewUrl(location, H.code);
     $('livecode').textContent = H.code;
@@ -657,7 +687,8 @@
     }
     if (key) html += '<div class="vtoca" style="animation:none">🔑 Eres jefe: esta es la clave. Que nadie mire tu celular.</div>';
     var rest = ag.rest || {};
-    html += '<div class="agcount">' + (ag.mode === 'coop' ? '<span>🕶️ faltan ' + escH(rest.r) + '</span><span>🤖 rival: ' + escH(rest.a) + '</span>'
+    var reloj = !ag.winner && ag.end ? '<span class="agtimer" data-end="' + (+ag.end) + '"></span>' : !ag.winner && ag.pausa ? '<span class="agtimer paused">⏸ en pausa</span>' : '';
+    html += '<div class="agcount">' + reloj + (ag.mode === 'coop' ? '<span>🕶️ faltan ' + escH(rest.r) + '</span><span>🤖 rival: ' + escH(rest.a) + '</span>'
       : '<span style="color:#ff3d7f">🔴 ' + escH(rest.r) + '</span><span style="color:#59c2ff">🔵 ' + escH(rest.a) + '</span>') + '</div>';
     html += '<div class="aggrid">' + words.map(function (w, i) {
       var k = /^[ranx]$/.test(shown[i]) ? shown[i] : '';
@@ -743,8 +774,14 @@
     es.onopen = renderViewer;
     es.onerror = function () {
       renderViewer();
-      // EventSource reintenta solo, salvo que el servidor la cierre
-      if (es.readyState === 2) { clearTimeout(V.retryT); V.retryT = setTimeout(listen, 5000) }
+      // EventSource reintenta solo, salvo que el servidor la cierre. Si la
+      // cerró porque las reglas niegan la sala (vieja o borrada), se avisa
+      // que terminó en vez de quedar reintentando para siempre.
+      if (es.readyState !== 2) return;
+      fetch(roomUrl(V.code)).then(function (r) {
+        if (r.status === 401 || r.status === 403) { V.state = null; renderViewer(); return }
+        clearTimeout(V.retryT); V.retryT = setTimeout(listen, 5000);
+      }, function () { clearTimeout(V.retryT); V.retryT = setTimeout(listen, 5000) });
     };
   }
   function startViewer(code) {
@@ -771,6 +808,14 @@
     renderViewer();
     listen();
     V.tick = setInterval(renderViewer, 15000);
+    // cuenta regresiva de Doble agente, local en cada celular
+    V.clock = setInterval(function () {
+      document.querySelectorAll('#viewbox .agtimer[data-end]').forEach(function (el) {
+        var s = Math.max(0, Math.ceil((+el.dataset.end - Date.now()) / 1000));
+        el.textContent = '⏱ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        el.classList.toggle('urgent', s <= 10);
+      });
+    }, 500);
     document.addEventListener('visibilitychange', function () { if (!document.hidden && V.code && (!V.es || V.es.readyState === 2)) listen() });
   }
   function leaveViewer() {
@@ -778,10 +823,11 @@
     if (V.seatsS) { V.seatsS.close(); V.seatsS = null }
     if (V.privS) { V.privS.close(); V.privS = null }
     V.me = null; V.priv = null; V.watch = false;
-    clearInterval(V.tick); clearTimeout(V.retryT); V.code = null;
+    clearInterval(V.tick); clearInterval(V.clock); clearTimeout(V.retryT); V.code = null;
     document.body.classList.remove('viewing');
     try { history.replaceState(null, '', location.pathname + location.search) } catch (e) { location.hash = '' }
     if (window.go) window.go('home');
+    if (!isHost() && window.showLock) window.showLock();
   }
 
   /* Arranque: con #ver=CODIGO se abre como espectador; si no, y el host
@@ -790,7 +836,11 @@
     var code = codeFromHash(location.hash);
     if (code) { startViewer(code); return }
     var d = mem();
-    if (validCode(d.code)) startHost(d.code);
+    if (!validCode(d.code)) return;
+    // la sala de otra noche no se retoma: se borra y la próxima vez que
+    // se comparta sale un código nuevo
+    if (!d.codeAt || Date.now() - d.codeAt > ROOM_TTL) { H.code = d.code; stopHost(); return }
+    if (isHost()) startHost(d.code);
   }
 
   api.boot = boot;
@@ -806,6 +856,9 @@
   api.clearImpostor = clearImpostor;
   api.sendKey = sendKey;
   api.releaseSeat = releaseSeat;
+  api.isHost = isHost;
+  api.unlockHost = unlockHost;
+  api.isViewing = function () { return !!V.code };
   api.jefeQR = jefeQR;
   api.pidOf = pidOf;
   api.openVote = openVote;

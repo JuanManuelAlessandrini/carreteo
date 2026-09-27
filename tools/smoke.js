@@ -71,6 +71,8 @@ const dom = new JSDOM(html, {
     win.AudioContext = audioStub;
     win.webkitAudioContext = audioStub;
     win.addEventListener('error', e => errors.push(e.error ? e.error.stack : e.message));
+    // el smoke juega como host; el candado se prueba aparte
+    win.localStorage.setItem('carreteo.host', JSON.stringify({ ok: true }));
     /* Red falsa para compartir en vivo: Firebase contesta al tiro y cada
        request queda anotado para revisar qué se mandó. */
     win.__fetches = [];
@@ -778,7 +780,8 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     await avanzar(false);
     for (let i = 0; i < 10; i++) await tick();
     const despues = JSON.parse(W.__fetches.filter(f => f.opt.method === 'PUT' && f.url.includes('/salas/' + code)).pop().opt.body);
-    if (despues.vote) throw new Error('la votación no se cerró con la carta siguiente');
+    // si la siguiente también es de votación abre otra urna: lo que importa es que la anterior se cerró
+    if (despues.vote && despues.vote.id === snap.vote.id) throw new Error('la votación no se cerró con la carta siguiente');
     W.Live.stopShare();
     for (let i = 0; i < 10; i++) await tick();
     ['/asientos/', '/privado/', '/votos/', '/salas/'].forEach(p => {
@@ -905,6 +908,70 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (AG().g.turn !== 'r') throw new Error('el turno no volvió al equipo');
     if (!/rival: 7/.test($('agbox').textContent)) throw new Error('no muestra cuánto le queda al rival');
     W.go('modes');
+  });
+
+  await run('doble agente: temporizador por turno, pausa al salir y pasa el turno en cero', async () => {
+    W.go('agente');
+    W.agSetMode('equipos');
+    W.agSetSecs(60);
+    W.agStart();
+    const AG = () => ev('AG');
+    if (!AG().deadline || Math.abs(AG().deadline - Date.now() - 60000) > 2000) throw new Error('no partió el reloj de 1 minuto');
+    if (!$('agtimer')) throw new Error('no muestra el reloj');
+    const t = AG().g.turn;
+    W.agTimeUp();
+    if (AG().g.turn === t) throw new Error('al acabarse el tiempo no pasó el turno');
+    if (!AG().deadline) throw new Error('el turno nuevo no reinició el reloj');
+    W.go('board');
+    if (AG().deadline || AG().paused == null) throw new Error('salir no pausó el reloj');
+    W.go('agente');
+    if (!AG().deadline || AG().paused != null) throw new Error('volver no reanudó el reloj');
+    // botón de pausa: congela el reloj y se respeta al salir y volver
+    const quedaba = AG().deadline - Date.now();
+    $('agbox').querySelector('.agpause').click();
+    if (AG().deadline || AG().paused == null || !AG().manual) throw new Error('el botón no pausó');
+    if (Math.abs(AG().paused - quedaba) > 1500) throw new Error('la pausa no guardó lo que quedaba');
+    W.go('board'); W.go('agente');
+    if (AG().deadline) throw new Error('volver a la pantalla sacó la pausa manual');
+    $('agbox').querySelector('.agpause').click();
+    if (!AG().deadline || AG().paused != null) throw new Error('el botón no reanudó');
+    W.agSetSecs(0); W.agStart();
+    if (AG().deadline || $('agtimer')) throw new Error('sin tiempo no debería haber reloj');
+    W.go('modes');
+  });
+
+  await run('salas viejas: la app no retoma una sala de otra noche', async () => {
+    W.__fetches.length = 0;
+    const d = JSON.parse(W.localStorage.getItem('carreteo.live') || '{}');
+    d.code = 'VQEJA2'; d.codeAt = Date.now() - 9 * 3600 * 1000;
+    W.localStorage.setItem('carreteo.live', JSON.stringify(d));
+    W.history.replaceState(null, '', W.location.pathname);
+    W.Live.boot();
+    for (let i = 0; i < 30; i++) await tick();
+    if (W.Live.isSharing()) throw new Error('retomó una sala de hace 9 horas');
+    if (!W.__fetches.some(f => f.opt.method === 'DELETE' && f.url.includes('/salas/VQEJA2'))) throw new Error('no borró la sala vieja');
+    if (JSON.parse(W.localStorage.getItem('carreteo.live')).code) throw new Error('siguió guardando el código viejo');
+  });
+
+  await run('candado: sin clave de host no se comparte, y la clave se revisa con Firebase', async () => {
+    W.localStorage.removeItem('carreteo.host');
+    W.Live.openShare();
+    if ($('livemodal').classList.contains('show')) throw new Error('sin clave dejó compartir');
+    W.showLock();
+    if ($('lock').style.display === 'none') throw new Error('no apareció el candado');
+    const real = W.fetch;
+    W.fetch = (u, o) => /\/hosts\//.test(u) ? Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) }) : real(u, o);
+    $('lockkey').value = 'mala'; W.tryUnlock();
+    for (let i = 0; i < 10; i++) await tick();
+    if (!/incorrecta/.test($('lockmsg').textContent)) throw new Error('no avisó clave incorrecta: ' + $('lockmsg').textContent);
+    W.__fetches.length = 0;
+    W.fetch = real;
+    $('lockkey').value = 'buena'; W.tryUnlock();
+    for (let i = 0; i < 10; i++) await tick();
+    const put = W.__fetches.find(f => f.opt.method === 'PUT' && /\/hosts\/uid1\.json\?auth=/.test(f.url));
+    if (!put || JSON.parse(put.opt.body) !== 'buena') throw new Error('no mandó la clave a hosts/<su id>');
+    if ($('lock').style.display !== 'none') throw new Error('no se desbloqueó');
+    if (!W.Live.isHost()) throw new Error('no recordó que este celular es host');
   });
 
   await run('doble agente (celular): el QR del jefe lo sienta y ve la clave; el resto no', async () => {

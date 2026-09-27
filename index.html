@@ -59,6 +59,12 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .tag{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 
 /* ---------- age gate ---------- */
+#lock{position:fixed;inset:0;background:var(--bg);z-index:70;display:flex;align-items:center;justify-content:center;padding:24px}
+#lock .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:28px 22px;max-width:380px;width:100%;text-align:center}
+#lock h2{font-size:28px;margin-bottom:10px}
+#lock p{color:var(--muted);font-size:14px;line-height:1.55;margin-bottom:16px}
+#lockkey{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:14px;color:var(--ink);font-size:16px;margin-bottom:10px;text-align:center}
+#lockmsg{min-height:20px;font-size:13px;color:var(--muted);margin-top:10px}
 #gate{position:fixed;inset:0;background:rgba(13,10,20,.92);backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px}
 #gate .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:28px 22px;max-width:380px;text-align:center;
   /* en landscape angosto (~380px de alto) el contenido no entra: que scrollee
@@ -320,6 +326,10 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 .agclue.on{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
 .agcw{font-family:'Anton';font-size:24px;letter-spacing:.02em}
 .agcount{display:flex;align-items:center;gap:14px;font-weight:700;font-size:14px;margin:4px 0 8px}
+.agtimer{font-variant-numeric:tabular-nums;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:13px}
+.agtimer.paused{opacity:.6}
+.agpause{width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);color:var(--ink);font-size:14px;margin-left:-8px}
+.agtimer.urgent{color:#17131f;background:var(--mango);border-color:var(--mango)}
 .agpeek{width:auto;margin-left:auto;padding:9px 14px;font-size:13px;border-radius:12px}
 .aggrid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
 .agcell{position:relative;aspect-ratio:1/0.78;border-radius:9px;background:var(--surface2);border:1px solid var(--line);color:var(--ink);font-size:clamp(9.5px,2.7vw,13px);font-weight:600;padding:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;word-break:break-word;hyphens:auto}
@@ -382,6 +392,16 @@ button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:n
 </style>
 </head>
 <body>
+<div id="lock" role="dialog" aria-modal="true" aria-labelledby="locktitle" style="display:none">
+  <div class="card">
+    <div style="font-size:44px;margin-bottom:6px">🔒</div>
+    <h2 id="locktitle">Carreteo es privado</h2>
+    <p>¿Te invitaron a una partida? Escanea el QR del host para mirarla y elegir tu jugador.</p>
+    <input id="lockkey" type="password" autocomplete="current-password" placeholder="Clave de host" aria-label="Clave de host" onkeydown="if(event.key==='Enter')tryUnlock()">
+    <button class="btn btn-primary" id="lockbtn" onclick="tryUnlock()">Entrar como host</button>
+    <div id="lockmsg" role="status" aria-live="polite"></div>
+  </div>
+</div>
 <div id="gate" role="dialog" aria-modal="true">
   <div class="card">
     <div style="font-size:44px;margin-bottom:6px">🍹</div>
