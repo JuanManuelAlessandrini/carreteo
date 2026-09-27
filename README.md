@@ -54,7 +54,7 @@ Dos equipos, 25 palabras y una clave que solo ven los jefes. Por turnos, cada je
 - **Equipos** al azar y parejos, con un jefe cada uno. Tocando un nombre se cambia de equipo, y con *hacer jefe* se elige otro jefe.
 - **La clave**: si el jefe eligió su nombre en el link de 📡, la ve en su celular. Si no, el host le muestra el **QR del jefe**, que lo sienta directo. Sin celular, se mantiene presionado **👁 Clave** en el tablero. Con dos celulares basta: el del host es el tablero y los dos jefes comparten otro, porque la clave es la misma.
 - **Los demás celulares** ven el tablero en vivo con lo descubierto, la pista y los intentos, pero nunca la clave.
-- **Temporizador** opcional por turno (1, 2 o 3 minutos): en los últimos 5 segundos suena un tic-tac, al llegar a cero pasa el turno y salir de la pantalla lo pausa. Los celulares que miran ven la cuenta regresiva.
+- **Temporizador** opcional por turno (1, 2 o 3 minutos): en los últimos 5 segundos suena un tic-tac, al llegar a cero pasa el turno, el botón ⏸ lo pausa y ▶ lo sigue; salir de la pantalla también lo pausa. Los celulares que miran ven la cuenta regresiva.
 - **Cooperativa** (desde 2): todos contra un rival simulado que descubre una palabra suya en cada turno. Si termina antes, pierden. Si ganan, reparten tantos sorbos como palabras le quedaban al rival.
 
 Las palabras están en `AGENTE_WORDS` de `cards.js`: `BASE` siempre, y `PICANTE` se suma en intensidad 🌶️ Picante.

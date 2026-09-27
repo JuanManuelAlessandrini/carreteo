@@ -687,7 +687,7 @@
     }
     if (key) html += '<div class="vtoca" style="animation:none">🔑 Eres jefe: esta es la clave. Que nadie mire tu celular.</div>';
     var rest = ag.rest || {};
-    var reloj = !ag.winner && ag.end ? '<span class="agtimer" data-end="' + (+ag.end) + '"></span>' : !ag.winner && ag.pausa ? '<span class="agtimer">⏸ pausa</span>' : '';
+    var reloj = !ag.winner && ag.end ? '<span class="agtimer" data-end="' + (+ag.end) + '"></span>' : !ag.winner && ag.pausa ? '<span class="agtimer paused">⏸ en pausa</span>' : '';
     html += '<div class="agcount">' + reloj + (ag.mode === 'coop' ? '<span>🕶️ faltan ' + escH(rest.r) + '</span><span>🤖 rival: ' + escH(rest.a) + '</span>'
       : '<span style="color:#ff3d7f">🔴 ' + escH(rest.r) + '</span><span style="color:#59c2ff">🔵 ' + escH(rest.a) + '</span>') + '</div>';
     html += '<div class="aggrid">' + words.map(function (w, i) {

@@ -1124,11 +1124,17 @@ let AG={phase:'setup',mode:'equipos',teams:null,g:null,clueN:1,secs:0,deadline:n
    Opcional, por turno. Al llegar a cero el turno pasa (en la cooperativa
    juega el rival). Salir de la pantalla lo pausa. */
 function agTimerStart(){
-  clearInterval(AG.tk); AG.tk=null; AG.paused=null;
+  clearInterval(AG.tk); AG.tk=null; AG.paused=null; AG.manual=false;
   AG.deadline=AG.secs&&AG.g&&!AG.g.winner?Date.now()+AG.secs*1000:null;
   if(AG.deadline) AG.tk=setInterval(agTimerTick,250);
 }
-function agTimerStop(){ clearInterval(AG.tk); AG.tk=null; AG.deadline=null; AG.paused=null }
+function agTimerStop(){ clearInterval(AG.tk); AG.tk=null; AG.deadline=null; AG.paused=null; AG.manual=false }
+/* el botón ⏸/▶: una pausa a mano se respeta aunque se salga y se vuelva */
+function agTogglePause(){
+  if(AG.deadline){ agPause(); AG.manual=true; toast('⏸ Tiempo en pausa') }
+  else if(AG.paused!=null){ AG.manual=false; agResume() }
+  renderAgente();
+}
 function agPause(){
   if(!AG.deadline) return;
   AG.paused=Math.max(0,AG.deadline-Date.now());
@@ -1170,7 +1176,7 @@ function agWords(){
   return S.intensity>=3?w.concat(AGENTE_WORDS.PICANTE):w;
 }
 function initAgente(){
-  if(AG.phase==='play'&&AG.g&&!AG.g.winner){ agResume(); renderAgente(); return }   // volver no corta la partida
+  if(AG.phase==='play'&&AG.g&&!AG.g.winner){ if(!AG.manual) agResume(); renderAgente(); return }   // volver no corta la partida
   const ns=agNames();
   // se conservan los equipos si la mesa es la misma
   const misma=AG.teams&&ns.length===AG.teams.r.length+AG.teams.a.length&&ns.every(n=>Agente.teamOf(AG.teams,n));
@@ -1320,7 +1326,7 @@ function renderAgente(){
   const cuenta=AG.mode==='coop'
     ?`<span>🕶️ faltan ${Agente.leftOf(g,'r')}</span><span>🤖 rival: ${Agente.leftOf(g,'a')}</span>`
     :`<span style="color:${AG_COL.r}">🔴 ${Agente.leftOf(g,'r')}</span><span style="color:${AG_COL.a}">🔵 ${Agente.leftOf(g,'a')}</span>`;
-  const reloj=AG.deadline||AG.paused!=null?`<span class="agtimer" id="agtimer">${agFmt(Math.ceil(((AG.deadline||Date.now()+AG.paused)-Date.now())/1000))}</span>`:'';
+  const reloj=AG.deadline||AG.paused!=null?`<span class="agtimer${AG.paused!=null?' paused':''}" id="agtimer">${agFmt(Math.ceil(((AG.deadline||Date.now()+AG.paused)-Date.now())/1000))}</span><button class="agpause" onclick="agTogglePause()" aria-label="${AG.paused!=null?'Seguir el tiempo':'Pausar el tiempo'}">${AG.paused!=null?'▶':'⏸'}</button>`:'';
   box.innerHTML=`${top}<div class="agcount">${cuenta}${reloj}
     <button class="holdbtn agpeek" id="agpeek">👁 Clave</button></div>
     ${agGrid()}

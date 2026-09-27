@@ -926,6 +926,15 @@ async function avanzar(saltar) { W.nextCard(!!saltar); await tick(); await tick(
     if (AG().deadline || AG().paused == null) throw new Error('salir no pausó el reloj');
     W.go('agente');
     if (!AG().deadline || AG().paused != null) throw new Error('volver no reanudó el reloj');
+    // botón de pausa: congela el reloj y se respeta al salir y volver
+    const quedaba = AG().deadline - Date.now();
+    $('agbox').querySelector('.agpause').click();
+    if (AG().deadline || AG().paused == null || !AG().manual) throw new Error('el botón no pausó');
+    if (Math.abs(AG().paused - quedaba) > 1500) throw new Error('la pausa no guardó lo que quedaba');
+    W.go('board'); W.go('agente');
+    if (AG().deadline) throw new Error('volver a la pantalla sacó la pausa manual');
+    $('agbox').querySelector('.agpause').click();
+    if (!AG().deadline || AG().paused != null) throw new Error('el botón no reanudó');
     W.agSetSecs(0); W.agStart();
     if (AG().deadline || $('agtimer')) throw new Error('sin tiempo no debería haber reloj');
     W.go('modes');
